@@ -1,0 +1,3 @@
+{ "name": "multimedia-hub", "version": "1.0.0", "private": true,
+  "scripts": { "start": "node server.js", "seed": "node tools/build-seed.js" },
+  "dependencies": { "jszip": "^3.10.1", "xlsx": "^0.18.5" } }

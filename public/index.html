@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multimedia Hub – Ghana Pilot</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap bar">
+    <div class="brand"><strong>Multimedia Hub</strong><span id="projName">Ghana Pilot Project</span></div>
+    <nav><a href="#overview">Ghana Pilot</a><a href="#gallery">Vendor Gallery</a><a href="#compare">Compare Vendors</a></nav>
+    <div class="actions"><button class="btn" data-act="open-import">Import Data</button><button class="btn primary" data-act="open-scores">Edit Scores</button></div>
+  </div>
+</header>
+<main class="wrap">
+  <section id="overview"></section>
+  <section id="gallery"></section>
+  <section id="compare"></section>
+  <footer class="foot" id="foot"></footer>
+</main>
+<div id="modal"></div>
+<div id="lightbox"></div>
+<div id="selbar"></div>
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/jszip.min.js"></script>
+<script src="lib/parse.js"></script>
+<script src="data/seed.js" onerror="window.SEED=null"></script>
+<script src="app.js"></script>
+</body>
+</html>
