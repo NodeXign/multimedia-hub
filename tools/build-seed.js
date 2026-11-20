@@ -118,7 +118,9 @@ const PROFILES = {
     'Delivery: supported by an in-house AI studio, giving faster turnaround and responsiveness and a wider range of visual styles to choose from.' ] },
 };
 // Vendors whose workbook thumbnails are too small: use the folder originals instead. per = max images per sub-folder.
-const IMG_LIMITS = { Hansinok: { max: 24, per: 9, dropExcel: true } };
+// exclude = never publish (e.g. files the vendor marked as under NDA); prefer = shown first; nameLabels = label from the file name.
+const IMG_LIMITS = { Hansinok: { max: 24, per: 9, dropExcel: true }, ICON: { max: 20, per: 20, exclude: /保密/, prefer: /规划|master\s?plan|island|housing|city|TOD/i, nameLabels: true, dropStills: true } };
+const niceName = f => path.basename(f, path.extname(f)).replace(/IARCH\d+\S*/i, '').replace(/\s*\(\d+\)/g, '').replace(/第二轮/g, '').replace(/^[A-Za-z]-(?=[A-Za-z])/, '').replace(/[-+\s]+$/, '').replace(/\s{2,}/g, ' ').trim();
 // Portfolio PDFs whose pages are rendering images (one image per page) -> shown as gallery images.
 const PDF_IMAGES = { '上海中城效果图.pdf': '上海 · 引力中城 效果图', 'Ucharm CG Portfolio.pdf': 'UCHARM CG Portfolio' };
 const pad = k => String(k).padStart(2, '0');
@@ -180,16 +182,17 @@ const url = f => '/files/' + path.relative(ROOT, f).split(path.sep).map(encodeUR
       const title = PDF_IMAGES[path.basename(f)];
       for (const pg of pdfImages(f, PUB, 'pdf' + (++n))) v.media.push({ id: 'f' + (++n), kind: 'image', src: pg.rel, orig: url(f) + '#page=' + pg.page, label: `${title} ${pad(pg.page)}`, source: 'Local PDF', web: pg.rel });
     }
-    for (const f of files.filter(f => /\.(pdf|docx?)$/i.test(f))) v.media.push({ id: 'f' + (++n), kind: 'link', src: url(f), orig: url(f), label: path.basename(f), source: 'Local folder', ...(fs.statSync(f).size < 2e7 ? { web: host(f) } : {}) });
-    const lim = IMG_LIMITS[vname] || { max: MAX_IMAGES, per: Infinity }, cnt = {}, pri = f => /非洲/.test(f) ? 0 : /大尺度/.test(f) ? 1 : 2;
-    const imgs = files.filter(f => P.IMG.test(f)).sort((a, b) => pri(a) - pri(b)).filter(f => { const g = path.dirname(f); cnt[g] = (cnt[g] || 0) + 1; return cnt[g] <= lim.per; }).slice(0, lim.max);
+    for (const f of files.filter((f, i, a) => /\.(pdf|docx?)$/i.test(f) && a.findIndex(x => path.basename(x) === path.basename(f)) === i)) v.media.push({ id: 'f' + (++n), kind: 'link', src: url(f), orig: url(f), label: path.basename(f), source: 'Local folder', ...(fs.statSync(f).size < 2e7 ? { web: host(f) } : {}) });
+    const lim = IMG_LIMITS[vname] || { max: MAX_IMAGES, per: Infinity }, cnt = {}, pri = f => lim.prefer ? (lim.prefer.test(path.basename(f)) ? 0 : 1) : /非洲/.test(f) ? 0 : /大尺度/.test(f) ? 1 : 2;
+    const imgs = files.filter(f => P.IMG.test(f) && !(lim.exclude && lim.exclude.test(f))).sort((a, b) => pri(a) - pri(b)).filter(f => { const g = path.dirname(f); cnt[g] = (cnt[g] || 0) + 1; return cnt[g] <= lim.per; }).slice(0, lim.max);
     if (lim.dropExcel && imgs.length) v.media = v.media.filter(m => !(m.source === 'Excel' && m.kind === 'image'));
+    if (lim.dropStills && imgs.length) v.media = v.media.filter(m => m.source !== 'YouTube');
     const seq = {};
     for (const f of imgs) {
       // unified image names: "<folder> 01", or "<vendor> 参考图 01" for files at the folder root
       const sub = path.basename(path.dirname(f)), grp = path.dirname(f) === dir ? v.name.split(' ')[0] + ' 参考图' : sub.replace(/\(\d+\)$/, '');
       seq[grp] = (seq[grp] || 0) + 1;
-      const m = { id: 'f' + (++n), kind: 'image', src: url(f), orig: url(f), label: `${grp} ${pad(seq[grp])}`, source: 'Local folder' };
+      const m = { id: 'f' + (++n), kind: 'image', src: url(f), orig: url(f), label: lim.nameLabels ? niceName(f) : `${grp} ${pad(seq[grp])}`, source: 'Local folder' };
       if (fs.statSync(f).size > DIRECT_LIMIT) { // large original: build a 2400px preview, keep the link to the original
         const out = path.join(PUB, 'media', 'preview', 'p' + n + '.jpg');
         try { execFileSync('sips', ['-Z', '2400', '-s', 'format', 'jpeg', '-s', 'formatOptions', '82', f, '--out', out], { stdio: 'ignore' }); m.src = 'media/preview/p' + n + '.jpg'; } catch (e) { console.warn('no preview for', f); }
