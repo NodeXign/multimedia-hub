@@ -9,7 +9,7 @@ const WORKBOOK = process.argv[2] || path.join(ROOT, 'Ghana Rendering Quotation_U
 // Vendor portfolio folders (folder name -> vendor name as written in the workbook).
 const FOLDERS = {
   'UCHARM 参考资料 261012': 'UCHARM CG', 'Hansinok 参考资料 261012': 'Hansinok', 'AIP报价及参考资料': 'AIP Studioworks',
-  '丝路报价及参考资料': 'Silkroad Visual', '蔚墨Willmore': 'Willmore', 'SNT报价及参考资料': 'SNT Visual',
+  '丝路报价及参考资料': 'Silkroad Visual', '蔚墨Willmore': 'Willmore', 'SNT报价及参考资料': 'SNT Visual', 'ICON报价及参考资料': 'ICON',
 };
 const MAX_IMAGES = 16, DIRECT_LIMIT = 3e6;
 // Display names for videos (file basename -> project title). Hash-named files were titled from the
@@ -70,7 +70,8 @@ const GROUPS = [['g1', 'A · Multimedia production quality (storyline & multimed
 // The export only carries criterion totals, so each total is spread over the sub-items in proportion to their max (0.5 steps).
 const REVIEW = { date: '2026-11-20', scores: {
   Hansinok: [20, 10, 11, 12.5, 9.5, 8, 5, 8], 'AIP Studioworks': [15.5, 7.5, 8.5, 9, 2, 7.5, 4.5, 6],
-  Willmore: [15.5, 7, 6, 7.5, 7, 7.5, 4.5, 8], 'SNT Visual': [8.5, 4.5, 5, 5.5, 3, 5, 4, 9] } };
+  Willmore: [15.5, 7, 6, 7.5, 7, 7.5, 4.5, 8], 'SNT Visual': [8.5, 4.5, 5, 5.5, 3, 5, 4, 9],
+  ICON: [18, 8, 12.5, 12, 8, 6, 3.5, 2] } }; // ICON: provisional – reviewer's steer of ~70 overall, quality high, price low
 function spread(total, subs) {
   const M = subs.reduce((a, x) => a + x.max, 0), raw = subs.map(x => total * x.max / M), out = raw.map(r => Math.floor(r * 2 + 1e-9) / 2);
   let left = Math.round((total - out.reduce((a, b) => a + b, 0)) * 2);
@@ -78,6 +79,15 @@ function spread(total, subs) {
   for (let k = 0; left > 0 && k < 50; k++) { const i = order[k % order.length]; if (out[i] + 0.5 <= subs[i].max) { out[i] += 0.5; left--; } }
   return out;
 }
+// Vendors quoted after the workbook was last saved. Totals are normalised to the Ghana quantities (3 eye-level, 5 min multimedia) like the workbook rows.
+const EXTRA_VENDORS = [{
+  id: 'v6_icon', name: 'ICON', quote: '2026-11-20 · Formal', currency: 'SGD', origCurrency: 'CNY', fx: 0.185, docTotal: 215290, discount: 0, modelling: 'Not stated', modelBasis: '', prepay: 0.3,
+  cny: [['Master Aerial /img', 2, 25000], ['Node Aerial /img', 6, 15000], ['Eye-level /img', 3, 8000], ['Multimedia /min', 5, 4200], ['Animation /sec', 15, 1500]],
+  source: 'ICON Quotation 20/11/2026 (CNY, tax incl., A Team)',
+  notes: 'CNY incl. all taxes; A Team; stills 5000 px long side @ 300 dpi; video 1920 × 1080; quote total ¥215,290 (4 eye-level, 4.95 min multimedia); 30% advance, 70% before delivery; changes to model / camera view / time of day in rendering phase may incur a revision fee; design-development assistance not included',
+  timeline: '', revisions: '', caveats: '4 eye-level and 4.95 min multimedia quoted (quote total ¥215,290); modelling not stated; design-development assistance excluded',
+  videos: [['BDP · Ipoh Masterplan', 'https://youtu.be/g7SChRNUAdc'], ['Gensler · Dubai Riverside (4K)', 'https://youtu.be/bDVJaAk1-Ek'], ['Perkins&Will · Murabba Project', 'https://youtu.be/6L2vPpkx6LM'], ['Buro Happold · Marina Masterplans, Jeddah', 'https://youtu.be/KJ9jC_0rEKQ']],
+}];
 // Reviewer's key notes (one point per line) and vendor directory details. Editable in the app.
 const PROFILES = {
   Hansinok: { company: 'Beijing Hansinok Co., Ltd', location: 'Beijing, China', contact: 'Charlie Yao', email: 'charlie@hansinok.com', wechat: '', keynotes: [
@@ -97,6 +107,11 @@ const PROFILES = {
     'Communication: based in Singapore, so coordination and reviews are straightforward.',
     'Submission: the most complete set of reference materials and videos, although quality is mid-range.',
     'Watch point: large-scale project capability is not as strong as Hansinok’s or Willmore’s.' ] },
+  ICON: { company: 'Shanghai Icon Digital Technology Co., Ltd 上海艾旷数字科技有限公司', location: 'Shanghai, China', contact: 'Lucia He', email: 'hemeiling@iconcg.net', wechat: 'www.iconcg.net', keynotes: [
+    'Quality: high visual and multimedia quality in the submitted samples.',
+    'Experience: video samples for international practices – BDP (Ipoh Masterplan), Gensler (Dubai Riverside), Perkins&Will (Murabba), Buro Happold (Jeddah marina masterplans).',
+    'Commercial: the highest quotation received (¥215,290 incl. tax, about S$38.4k on the Ghana quantities); 30% advance, 70% before delivery.',
+    'Watch point: modelling scope and delivery programme are not stated in the quotation.' ] },
   'SNT Visual': { company: 'SNT Visual 写意数字图像', location: '', contact: '', email: '', wechat: '', keynotes: [
     'Commercial: price-competitive.',
     'Experience: has delivered large-scale projects, including design work in Mongolia.',
@@ -135,6 +150,12 @@ const url = f => '/files/' + path.relative(ROOT, f).split(path.sep).map(encodeUR
   const buf = fs.readFileSync(WORKBOOK);
   const parsed = await P.parseWorkbook(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), XLSX, JSZip);
   const st = P.toState(parsed);
+  for (const e of EXTRA_VENDORS) {
+    const { cny, videos, ...v } = e, sg = x => Math.round(x * e.fx * 100) / 100, tot = cny.reduce((a, c) => a + c[1] * c[2], 0), anim = cny.filter(c => /Animation/.test(c[0])).reduce((a, c) => a + c[1] * c[2], 0);
+    Object.assign(v, { price: sg(tot), gross: sg(tot), totalEx: sg(tot - anim), anim15: sg(anim), items: cny.map(c => ({ label: c[0], qty: c[1], unit: sg(c[2]), unitOrig: c[2] })), deliverables: st.vendors[0].deliverables, cover: null,
+      media: videos.flatMap(([label, u], i) => { const id = /youtu\.be\/([\w-]+)/.exec(u)[1]; return [{ id: e.id + 'v' + i, kind: 'embed', src: P.classifyUrl(u).src, orig: u, label, source: 'Vendor email' }, { id: e.id + 'i' + i, kind: 'image', src: `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`, orig: u, label: label + ' (video still)', source: 'YouTube' }]; }) });
+    st.vendors.push(v); st.scores[v.id] = {};
+  }
   fs.rmSync(path.join(PUB, 'media'), { recursive: true, force: true });
   fs.mkdirSync(path.join(PUB, 'media', 'xl'), { recursive: true }); fs.mkdirSync(path.join(PUB, 'media', 'preview'), { recursive: true }); fs.mkdirSync(path.join(PUB, 'media', 'pdf'), { recursive: true }); fs.mkdirSync(path.join(PUB, 'media', 'local'), { recursive: true });
   fs.mkdirSync(path.join(PUB, 'data'), { recursive: true });
