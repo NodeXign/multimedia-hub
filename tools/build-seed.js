@@ -78,6 +78,30 @@ function spread(total, subs) {
   for (let k = 0; left > 0 && k < 50; k++) { const i = order[k % order.length]; if (out[i] + 0.5 <= subs[i].max) { out[i] += 0.5; left--; } }
   return out;
 }
+// Reviewer's key notes (one point per line) and vendor directory details. Editable in the app.
+const PROFILES = {
+  Hansinok: { company: 'Beijing Hansinok Co., Ltd', location: 'Beijing, China', contact: 'Charlie Yao', email: 'charlie@hansinok.com', wechat: '', keynotes: [
+    'Company profile: strong market reputation and regarded as one of China’s top-tier architectural visualisation studios; fee level is at the premium end.',
+    'Commercial: overall quotation reduced from the initial S$51,435 to S$30,025 (about 42% off). Notably, multimedia is now priced at S$20 per second – a very substantial concession.',
+    'Large-scale experience: track record on projects of 100 km² and above, including Middle East giga-projects such as NEOM / The Line, plus multimedia production; delivery quality and visual standard are consistently high. Also has project experience in Africa.',
+    'Team: the project lead takes overall accountability for the rendering deliverables; team members have architectural backgrounds and extensive large-project experience.',
+    'Programme: the proposed schedule for this project is realistic and can be progressed as planned.' ] },
+  Willmore: { company: 'Willmore 蔚墨', location: '', contact: 'Guo Tianfei 郭田飞', email: '', wechat: 'Guotianfei_willmore', keynotes: [
+    'Company profile: a long-established visualisation and promotional media studio with a sound market reputation; has previously worked with SJ senior management.',
+    'Commercial: mid-range pricing; the offer extended to SJ is competitive.',
+    'Experience: has collaborated with the SJ India team and has a broad project portfolio.',
+    'Programme: confident of meeting the project milestones.',
+    'Watch point: multimedia capability is comparatively weaker.' ] },
+  'AIP Studioworks': { company: 'AIP Studioworks', location: 'Singapore', contact: '', email: '', wechat: '', keynotes: [
+    'Company profile: Singapore-based studio; the founder is ex-SJA and is familiar with SJA’s design language, and is likely to have worked with other SJ teams.',
+    'Communication: based in Singapore, so coordination and reviews are straightforward.',
+    'Submission: the most complete set of reference materials and videos, although quality is mid-range.',
+    'Watch point: large-scale project capability is not as strong as Hansinok’s or Willmore’s.' ] },
+  'SNT Visual': { company: 'SNT Visual 写意数字图像', location: '', contact: '', email: '', wechat: '', keynotes: [
+    'Commercial: price-competitive.',
+    'Experience: has delivered large-scale projects, including design work in Mongolia.',
+    'Delivery: supported by an in-house AI studio, giving faster turnaround and responsiveness and a wider range of visual styles to choose from.' ] },
+};
 // Vendors whose workbook thumbnails are too small: use the folder originals instead. per = max images per sub-folder.
 const IMG_LIMITS = { Hansinok: { max: 24, per: 9, dropExcel: true } };
 // Portfolio PDFs whose pages are rendering images (one image per page) -> shown as gallery images.
@@ -158,6 +182,7 @@ const url = f => '/files/' + path.relative(ROOT, f).split(path.sep).map(encodeUR
   for (const v of st.vendors) { if (v.price == null) continue; v.vsLowest = v.price / low - 1; if (v.updated && ps) { const r = v.price / low; (st.scores[v.id] = st.scores[v.id] || {})[ps.id] = ps.max * (r <= 1.1 ? 1 : r <= 1.3 ? 0.5 : r <= 1.5 ? 0.3 : 0); ps.rationale = (ps.rationale || '') + ` Updated ${st.vendors.find(x => x === v).quote.slice(0, 10)}: ${v.name} ${v.currency} ${v.price.toLocaleString('en-SG')} = ${Math.round(r * 100)}% of the lowest quote.`; } delete v.updated; }
   for (const [name, pts] of Object.entries(REVIEW.scores)) { const v = st.vendors.find(x => P.sameVendor(x.name, name)); if (!v) { console.warn('review: vendor not found', name); continue; } st.criteria.forEach((c, i) => spread(pts[i], c.subs).forEach((x, k) => { (st.scores[v.id] = st.scores[v.id] || {})[c.subs[k].id] = x; })); }
   st.scoringNote = `criteria from workbook · scores reviewed ${REVIEW.date}`;
+  for (const v of st.vendors) { const k = Object.keys(PROFILES).find(n => P.sameVendor(v.name, n)), pr = PROFILES[k] || {}; Object.assign(v, { company: pr.company || v.name, location: pr.location || '', contact: pr.contact || '', email: pr.email || '', wechat: pr.wechat || '', keynotes: (pr.keynotes || []).join('\n') }); }
   for (const [name, [rank, note]] of Object.entries(RANKS)) { const v = st.vendors.find(x => P.sameVendor(x.name, name)); if (v) { v.rank = rank; v.recNote = note; } }
   st.groups = GROUPS.map(g => ({ id: g[0], name: g[1] })); st.criteria.forEach((c, i) => { c.group = (GROUPS.find(g => g[2].includes(i)) || GROUPS[2])[0]; });
   st.vendors.forEach(v => { const c = v.media.find(m => m.kind === 'image' && !m.doc); v.cover = c ? c.id : null; });
