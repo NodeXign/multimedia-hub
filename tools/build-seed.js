@@ -43,6 +43,31 @@ const VIDEO_LINKS = {
   'a0d7f0441418328a222fe6a2f6092bb8_raw.mp4': OD + 'IQB7nbydapTGTZnzfBMWUVpBAWK9NwWbtEmTR6SU9sqqrN8',
   '特效合集.mp4': OD + 'IQAn2feZWZVITo9urHACIpp6AXx23Q5pdwB3GGf-_2kp96A',
 };
+// OneDrive file ids -> in-page player (embed.aspx); viewers must be signed in to the organisation.
+const EMB = id => `https://surbanajurong-my.sharepoint.com/personal/jiaqi_xu_sjgroup_com/_layouts/15/embed.aspx?UniqueId=${id}&embed=%7B%22ust%22%3Atrue%7D&referrer=StreamWebApp&referrerScenario=EmbedDialog.Create`;
+const VIDEO_IDS = {
+  '1 West Saudi master plan - 4k.mp4': '64aadcbf-c8a8-4373-a23e-b88df675ea7d', 'DUBAI SOUTH GOLF DISTRICT.mp4': 'f28860d4-5b16-43b3-b3df-e3434ace0c80',
+  '53e9e578d26d90cd9f2b2ad3d3d7ceb1.mp4': '6371d796-7741-42bb-8134-54b89646d9c0', '7154a2c560cc901f6edca6c03126d8ef_raw.mp4': '1fc2601c-abb5-4418-8e8b-cd65f5bd988c',
+  'ce96edddb8d55f7b3fbae58b93ca7d01_raw.mp4': '8d17a43c-3627-4bc1-8655-6b30d9723eed', '53e9e578d26d90cd9f2b2ad3d3d7ceb1_raw.mp4': '15de646e-b8f6-4a4f-917e-71e6942f015a',
+  '郑州视频0114.mp4': 'deeabef9-a318-48e9-ad30-08fdf21c07b3', '中规院清华院联合体电子成果提交设计成果第.mp4': '4b680c02-84e7-412a-ac0c-61e2fbe29b0e',
+  '重庆特钢厂0112带音效版.mp4': '2d7d9bb8-370f-49da-b46e-099d1b190b14', '20250603-新加披国立大学医院设计方案-多媒.mp4': '5fa97d54-b331-4654-9f2c-6d4227947cb7',
+  '8e1128192e819509c04e31bf831f0e06_raw.mp4': '299fd649-baba-4d58-840f-ed6e52b0b091', '0142eedcb6cb50d09b399dd37b9099df_raw.mp4': 'd89c38c8-7d4f-4b70-b8a7-ab9516460553',
+  'a0d7f0441418328a222fe6a2f6092bb8_raw.mp4': '9dbc9d7b-946a-4dc6-99f3-7c1316515a41', '特效合集.mp4': '99f7d927-9559-4e48-8f6e-ac7002229a7a',
+};
+// Quotation updates received after the workbook was last saved (the workbook itself is not modified).
+const OVERRIDES = {
+  Hansinok: {
+    set: { quote: '2026-11-20 · Formal (updated quotation)', price: 30025, totalEx: 26800, anim15: 3225, docTotal: 30025, discount: 1 - 30025 / 51435,
+      source: 'Hansinok Quotation Update 2026-11-20 (formal, SGD; modelling US$50/building excl.)',
+      notes: 'SGD, tax excl.; updated formal quote S$30,025 dated 20 Nov 2026 (supersedes S$34,300 of 19 Nov and the initial S$51,435 WeChat quote); 285 s multimedia @ S$20/s; 15 s animation @ S$215/s; modelling excluded – US$50/building, TBC; 50% advance; timeline Dec 2026–Jan 2027; animation: 1 demo + 3 rounds of static-frame revisions' },
+    units: [[/Node/, 2100], [/Animation/, 215]],
+  },
+};
+// Recommended display order (reviewer's call, editable in the app) and the three scoring categories.
+const RANKS = { Hansinok: [1, ''], Willmore: [2, 'Multimedia comparatively weaker'] };
+const GROUPS = [['g1', 'A · Multimedia production quality (storyline & multimedia)', [0, 2]], ['g2', 'B · Large-project experience & quality', [1, 4]], ['g3', 'C · Team capability & delivery', [3, 5, 6, 7]]];
+// Vendors whose workbook thumbnails are too small: use the folder originals instead. per = max images per sub-folder.
+const IMG_LIMITS = { Hansinok: { max: 24, per: 9, dropExcel: true } };
 // Portfolio PDFs whose pages are rendering images (one image per page) -> shown as gallery images.
 const PDF_IMAGES = { '上海中城效果图.pdf': '上海 · 引力中城 效果图', 'Ucharm CG Portfolio.pdf': 'UCHARM CG Portfolio' };
 const pad = k => String(k).padStart(2, '0');
@@ -93,13 +118,15 @@ const url = f => '/files/' + path.relative(ROOT, f).split(path.sep).map(encodeUR
       if (hit) { hit.link = hit.orig; hit.kind = 'video'; hit.src = hit.orig = url(f); hit.source = 'Excel + local file'; }
       else v.media.push({ id: 'f' + (++n), kind: 'video', src: url(f), orig: url(f), label: path.basename(f), fileName: path.basename(f), source: 'Local folder' });
     }
-    v.media.forEach(m => { if (m.fileName && VIDEO_NAMES[m.fileName]) m.label = VIDEO_NAMES[m.fileName]; if (m.kind === 'video' && !m.link && VIDEO_LINKS[m.fileName]) m.link = VIDEO_LINKS[m.fileName]; });
+    v.media.forEach(m => { if (m.fileName && VIDEO_NAMES[m.fileName]) m.label = VIDEO_NAMES[m.fileName]; if (m.kind === 'video' && !m.link && VIDEO_LINKS[m.fileName]) m.link = VIDEO_LINKS[m.fileName]; if (m.kind === 'video' && VIDEO_IDS[m.fileName]) m.embed = EMB(VIDEO_IDS[m.fileName]); });
     for (const f of files.filter(f => PDF_IMAGES[path.basename(f)])) {
       const title = PDF_IMAGES[path.basename(f)];
       for (const pg of pdfImages(f, PUB, 'pdf' + (++n))) v.media.push({ id: 'f' + (++n), kind: 'image', src: pg.rel, orig: url(f) + '#page=' + pg.page, label: `${title} ${pad(pg.page)}`, source: 'Local PDF', web: pg.rel });
     }
     for (const f of files.filter(f => /\.(pdf|docx?)$/i.test(f))) v.media.push({ id: 'f' + (++n), kind: 'link', src: url(f), orig: url(f), label: path.basename(f), source: 'Local folder', ...(fs.statSync(f).size < 2e7 ? { web: host(f) } : {}) });
-    const imgs = files.filter(f => P.IMG.test(f)).sort((a, b) => /非洲/.test(b) - /非洲/.test(a)).slice(0, MAX_IMAGES);
+    const lim = IMG_LIMITS[vname] || { max: MAX_IMAGES, per: Infinity }, cnt = {}, pri = f => /非洲/.test(f) ? 0 : /大尺度/.test(f) ? 1 : 2;
+    const imgs = files.filter(f => P.IMG.test(f)).sort((a, b) => pri(a) - pri(b)).filter(f => { const g = path.dirname(f); cnt[g] = (cnt[g] || 0) + 1; return cnt[g] <= lim.per; }).slice(0, lim.max);
+    if (lim.dropExcel && imgs.length) v.media = v.media.filter(m => !(m.source === 'Excel' && m.kind === 'image'));
     const seq = {};
     for (const f of imgs) {
       // unified image names: "<folder> 01", or "<vendor> 参考图 01" for files at the folder root
@@ -114,6 +141,11 @@ const url = f => '/files/' + path.relative(ROOT, f).split(path.sep).map(encodeUR
       v.media.push(m);
     }
   }
+  for (const [name, o] of Object.entries(OVERRIDES)) { const v = st.vendors.find(x => P.sameVendor(x.name, name)); if (!v) continue; Object.assign(v, o.set); for (const [re, u] of o.units) for (const it of v.items) if (re.test(it.label)) it.unit = it.unitOrig = u; v.updated = true; }
+  const low = Math.min(...st.vendors.filter(v => v.price != null).map(v => v.price)), ps = st.criteria.flatMap(c => c.subs).find(s => /evaluated price/i.test(s.name));
+  for (const v of st.vendors) { if (v.price == null) continue; v.vsLowest = v.price / low - 1; if (v.updated && ps) { const r = v.price / low; (st.scores[v.id] = st.scores[v.id] || {})[ps.id] = ps.max * (r <= 1.1 ? 1 : r <= 1.3 ? 0.5 : r <= 1.5 ? 0.3 : 0); ps.rationale = (ps.rationale || '') + ` Updated ${st.vendors.find(x => x === v).quote.slice(0, 10)}: ${v.name} ${v.currency} ${v.price.toLocaleString('en-SG')} = ${Math.round(r * 100)}% of the lowest quote.`; } delete v.updated; }
+  for (const [name, [rank, note]] of Object.entries(RANKS)) { const v = st.vendors.find(x => P.sameVendor(x.name, name)); if (v) { v.rank = rank; v.recNote = note; } }
+  st.groups = GROUPS.map(g => ({ id: g[0], name: g[1] })); st.criteria.forEach((c, i) => { c.group = (GROUPS.find(g => g[2].includes(i)) || GROUPS[2])[0]; });
   st.vendors.forEach(v => { const c = v.media.find(m => m.kind === 'image' && !m.doc); v.cover = c ? c.id : null; });
   st.source = { workbook: path.basename(WORKBOOK), built: new Date().toISOString().slice(0, 10), rev: Date.now() };
   fs.writeFileSync(path.join(PUB, 'data', 'seed.js'), 'window.SEED=' + JSON.stringify(st) + ';\n');

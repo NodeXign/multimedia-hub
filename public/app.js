@@ -1,15 +1,15 @@
 /* Multimedia Hub V1.0 – local-first vendor comparison dashboard (vanilla JS, no build step). */
-const P = window.MMParse, LS = 'mmhub.state.v1';
+const P = window.MMParse, LS = 'mmhub.state.v2';
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clone = o => JSON.parse(JSON.stringify(o));
 const money = (n, cur) => n == null ? '—' : `${cur ? cur + ' ' : ''}${Number(n).toLocaleString('en-SG', { maximumFractionDigits: 2 })}`;
 const fx1 = n => (Math.round(n * 10) / 10).toLocaleString('en-SG');
-let S, ui = { sel: new Set(), sort: 'workbook', modal: null, lb: null, idx: {}, cidx: {} };
+let S, ui = { sel: new Set(), sort: 'rec', dir: 'asc', modal: null, lb: null, idx: {}, cidx: {} };
 const blobUrls = {};
 const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 // Online build: files under /files/ exist only on the local server -> use hosted copies or the OneDrive link.
-function webify() { if (LOCAL) return; for (const m of allMedia()) { const loc = u => (u || '').startsWith('/files/'); if (!loc(m.src) && !loc(m.orig)) continue; if (m.web) { if (loc(m.src)) m.src = m.web; m.orig = m.web; } else if (m.link) { m.kind = 'ext'; m.src = m.orig = m.link; } else { m.kind = 'ext'; m.src = m.orig = ''; } } }
+function webify() { if (LOCAL) return; for (const m of allMedia()) { const loc = u => (u || '').startsWith('/files/'); if (!loc(m.src) && !loc(m.orig)) continue; if (m.embed) { m.kind = 'embed'; m.src = m.embed; m.orig = m.link || m.embed; } else if (m.web) { if (loc(m.src)) m.src = m.web; m.orig = m.web; } else if (m.link) { m.kind = 'ext'; m.src = m.orig = m.link; } else { m.kind = 'ext'; m.src = m.orig = ''; } } }
 
 /* ---------- persistence: state in localStorage, imported files in IndexedDB ---------- */
 const idb = () => new Promise((res, rej) => { const r = indexedDB.open('mmhub', 1); r.onupgradeneeded = () => r.result.createObjectStore('blobs'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
@@ -44,13 +44,17 @@ function player(m, auto) {
   if (!s) return fallback(m);
   if (m.kind === 'image') return `<img src="${s}" alt="${esc(m.label)}" loading="lazy">`;
   if (m.kind === 'video') return `<video src="${s}" controls preload="metadata" playsinline ${auto ? 'autoplay' : ''} onerror="this.outerHTML=window.vfb('${m.id}')"></video>`;
-  if (m.kind === 'embed') return `<iframe src="${s}" allow="fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" loading="lazy"></iframe>`;
+  if (m.kind === 'embed') return `<iframe src="${s}" allow="fullscreen; autoplay; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" loading="lazy"></iframe>`;
   return fallback(m);
 }
 
 /* ---------- scoring ---------- */
 function crit(v, c) { let got = 0, max = 0, rated = 0; for (const s of c.subs) { const x = (S.scores[v.id] || {})[s.id]; if (x == null) continue; rated++; got += x; max += s.max; } return { rated, total: c.subs.length, got, max: c.subs.reduce((a, s) => a + s.max, 0), pct: max ? got / max : null }; }
 function overall(v) { let sum = 0, complete = true, any = false; for (const c of S.criteria) { const r = crit(v, c); if (r.rated < r.total) complete = false; if (r.pct != null) { any = true; sum += r.pct * c.weight; } } return { score: any ? sum : null, complete }; }
+const groups = () => S.groups && S.groups.length ? S.groups : [{ id: '', name: 'Criteria' }];
+const gOf = c => (groups().find(g => g.id === c.group) || groups()[0]).id;
+const gCrit = g => S.criteria.filter(c => gOf(c) === g.id);
+function gScore(v, g) { let sum = 0, w = 0, any = false; for (const c of gCrit(g)) { w += +c.weight || 0; const r = crit(v, c); if (r.pct != null) { any = true; sum += r.pct * c.weight; } } return { score: any ? sum : null, w }; }
 const wsum = () => Math.round(S.criteria.reduce((a, c) => a + (+c.weight || 0), 0) * 100) / 100;
 const weightsOk = () => Math.abs(wsum() - 100) < 0.01;
 function priceInfo(list = S.vendors) {
@@ -82,9 +86,8 @@ function renderOverview() {
 
 function sorted() {
   const a = [...S.vendors];
-  if (ui.sort === 'price') a.sort((x, y) => (x.price == null) - (y.price == null) || x.price - y.price);
-  if (ui.sort === 'score') a.sort((x, y) => (overall(y).score ?? -1) - (overall(x).score ?? -1));
-  return a;
+  const key = { rec: v => v.rank || null, price: v => v.price, score: v => overall(v).score, name: v => v.name.toLowerCase(), workbook: v => S.vendors.indexOf(v) }[ui.sort], d = ui.dir === 'desc' ? -1 : 1;
+  return a.sort((x, y) => { const p = key(x), q = key(y); return (p == null) - (q == null) || (p == null ? 0 : (p < q ? -1 : p > q ? 1 : 0) * d); }); // empty values always last
 }
 function card(v, pi) {
   const im = images(v), i = Math.min(ui.idx[v.id] ?? Math.max(0, im.findIndex(m => m.id === v.cover)), Math.max(0, im.length - 1)), cur = im[i];
@@ -98,7 +101,7 @@ function card(v, pi) {
     <div class="body">
       <div class="row1"><div><h3>${esc(v.name)}</h3><small>${esc(v.quote)}</small></div>
         <div class="price num ${low ? 'low' : ''}"><small>${esc(v.currency)}</small>${money(v.price)}</div></div>
-      <div class="rowf">${low ? '<span class="pill good">Lowest quote</span>' : ''}<span class="pill acc">Score ${scoreLabel(v, true)}</span>${v.docTotal != null && v.origCurrency ? `<span class="pill">Quote doc total ${money(v.docTotal, v.origCurrency)}</span>` : ''}</div>
+      <div class="rowf">${v.rank ? `<span class="pill good">Recommended #${v.rank}</span>` : ''}${v.recNote ? `<span class="pill warn">${esc(v.recNote)}</span>` : ''}${low ? '<span class="pill good">Lowest quote</span>' : ''}<span class="pill acc">Score ${scoreLabel(v, true)}</span>${v.docTotal != null && v.origCurrency ? `<span class="pill">Quote doc total ${money(v.docTotal, v.origCurrency)}</span>` : ''}</div>
       <dl><dt>Timeline</dt><dd>${esc(v.timeline) || '<span class="mut">Not stated</span>'}</dd>
         <dt>Scope</dt><dd>${esc(v.deliverables) || '<span class="mut">Not stated</span>'}</dd>
         ${v.caveats ? `<dt>Caveats</dt><dd>${esc(v.caveats)}</dd>` : ''}</dl>
@@ -110,7 +113,7 @@ function card(v, pi) {
 function renderGallery() {
   const pi = priceInfo();
   $('#gallery').innerHTML = `<div class="sec-head"><div><h2>Vendor Gallery</h2><p class="lead">Original reference work from the workbook and vendor folders. Click an image for full screen.</p></div>
-    <div class="rowf"><label class="mut" for="sort">Sort</label><select id="sort" data-act="sort"><option value="workbook">Workbook order</option><option value="price">Price (low → high)</option><option value="score">Overall score (high → low)</option></select></div></div>
+    <div class="rowf"><label class="mut" for="sort">Sort</label><select id="sort" data-act="sort"><option value="rec">Recommendation</option><option value="score">Overall score</option><option value="price">Price</option><option value="name">Name</option><option value="workbook">Workbook order</option></select><button class="btn sm" data-act="dir" title="Switch between ascending and descending">${ui.dir === 'asc' ? '↑ Ascending' : '↓ Descending'}</button><button class="btn sm primary" data-act="add-vendor">＋ Add vendor</button></div></div>
     <div class="grid">${sorted().map(v => card(v, pi)).join('')}</div>
     ${(S.unassigned || []).length ? `<div class="note" style="margin-top:18px"><b>${S.unassigned.length} media item(s) need manual confirmation</b> – the workbook does not say which vendor they belong to. <button class="btn sm" data-act="open-import">Assign in Import Data</button></div>` : ''}`;
   $('#sort').value = ui.sort;
@@ -118,6 +121,17 @@ function renderGallery() {
   $('#selbar').innerHTML = n ? `<div class="in"><span>${n} selected${n > 4 ? ' – max 4' : n < 2 ? ' – pick at least 2' : ''}</span><button class="btn sm" data-act="go-compare" ${n < 2 || n > 4 ? 'disabled' : ''}>Compare Selected</button><button class="btn sm ghost" style="color:#fff;border-color:#555" data-act="clear-sel">Clear</button></div>` : '';
 }
 
+function vidsOf(v) { return v.media.filter(m => m.kind === 'video' || m.kind === 'embed' || m.kind === 'ext'); }
+function renderVideos() {
+  const vs = sorted().filter(v => vidsOf(v).length), el = $('#videos'); if (!el) return;
+  if (!vs.length) { el.innerHTML = ''; return; }
+  const v = vs.find(x => x.id === ui.vv) || vs[0], list = vidsOf(v), m = list.find(x => x.id === ui.vm) || list[0];
+  el.innerHTML = `<div class="sec-head"><div><h2>Video Preview</h2><p class="lead">Watch each vendor's reference videos here without leaving the page.${LOCAL ? '' : ' OneDrive videos play when this browser is signed in to the organisation’s Microsoft 365.'}</p></div></div>
+    <div class="vtabs">${vs.map(x => `<button class="btn ${x.id === v.id ? 'primary' : ''}" data-act="vv" data-v="${x.id}">${esc(x.name)} <small>${vidsOf(x).length}</small></button>`).join('')}</div>
+    <div class="vwrap"><div><div class="pv">${player(m)}</div>
+      <div class="rowf" style="justify-content:space-between;margin-top:8px"><span><b>${esc(m.label)}</b> <small>· ${esc(m.source)}</small></span><span class="rowf">${m.link ? `<a class="btn sm" href="${esc(m.link)}" target="_blank" rel="noopener">Open on OneDrive ↗</a>` : ''}<button class="btn sm" data-act="lb" data-v="${v.id}" data-m="${m.id}">Full screen</button></span></div></div>
+      <div class="vlist">${list.map((x, k) => `<button class="${x.id === m.id ? 'on' : ''}" data-act="vm" data-m="${x.id}"><span class="num">${k + 1}</span>${esc(x.label)}</button>`).join('')}</div></div>`;
+}
 function cmpVendors() { return S.vendors.filter(v => ui.sel.has(v.id)).slice(0, 4); }
 function renderCompare() {
   const vs = cmpVendors(), el = $('#compare');
@@ -152,7 +166,8 @@ function renderCmpData() {
     grp('Delivery') + row('Timeline', v => esc(v.timeline) || ns) + row('Revision Rounds', v => esc(v.revisions) || ns) +
     row('Prepayment', v => v.prepay == null ? ns : typeof v.prepay === 'number' ? Math.round(v.prepay * 100) + '%' : esc(v.prepay)) + row('Key notes', v => `<small>${esc(v.notes)}</small>`) +
     grp(`Evaluation ${S.scoringSource === 'excel' ? '(criteria &amp; scores from workbook – editable)' : '(default criteria – editable)'}`) +
-    S.criteria.map(c => row(`${esc(c.name)}<br><small>Weight ${c.weight}%</small>`, v => { const r = crit(v, c); return r.pct == null ? '<span class="pill warn">Not Rated</span>' : `<span class="num"><b>${fx1(r.got)}</b> / ${r.max}</span>${r.rated < r.total ? ' <span class="pill warn">partly rated</span>' : ''}<div class="meter"><i style="width:${Math.round(r.pct * 100)}%"></i></div>`; })).join('') +
+    groups().map(g => (groups().length > 1 ? row(`<b>${esc(g.name)}</b><br><small>Weight ${gScore(vs[0], g).w}%</small>`, v => { const r = gScore(v, g); return r.score == null ? '<span class="pill warn">Not Rated</span>' : `<b class="num">${fx1(r.score)}</b> / ${r.w}`; }, 'sub') : '') +
+      gCrit(g).map(c => row(`${esc(c.name)}<br><small>Weight ${c.weight}%</small>`, v => { const r = crit(v, c); return r.pct == null ? '<span class="pill warn">Not Rated</span>' : `<span class="num"><b>${fx1(r.got)}</b> / ${r.max}</span>${r.rated < r.total ? ' <span class="pill warn">partly rated</span>' : ''}<div class="meter"><i style="width:${Math.round(r.pct * 100)}%"></i></div>`; })).join('')).join('') +
     row('<b>Overall Score</b>', v => `<div class="big">${scoreLabel(v)}</div>${rk.includes(v.id) ? `<small>Rank ${rk.indexOf(v.id) + 1} of ${rk.length} rated vendors</small>` : ''}`) +
     (weightsOk() ? '' : `<div class="crow"><div class="lbl"></div><div style="grid-column:2/-1"><span class="pill warn">Weights total ${wsum()}% – must equal 100%. Overall scores are provisional.</span></div></div>`);
 }
@@ -168,24 +183,27 @@ function scoreSummary() {
 function modalScores() {
   return `<div class="ov" data-act="close-ov"><div class="dlg"><div class="dhead"><div><h2>Edit Scores &amp; Weights</h2><small>${esc(S.project.scoringTitle || '')}</small></div><button class="btn" data-act="close">Done</button></div>
     <div class="panel" id="scoreSummary">${scoreSummary()}</div>
+    <p class="mut" style="margin:12px 2px 0">Every score, weight and max is editable – click a cell and type. Use the small A/B/C selector to move a criterion to another category.</p>
     <div class="panel tblw"><table><thead><tr><th style="min-width:280px">Criterion / sub-item</th><th>Weight %</th><th>Max</th>${S.vendors.map(v => `<th class="c">${esc(v.name)}</th>`).join('')}</tr></thead><tbody>
-    ${S.criteria.map(c => `<tr class="crit"><td>${esc(c.name)}<details><summary>What it measures</summary>${esc(c.desc)}</details></td><td><input class="wt" type="number" min="0" max="100" step="1" value="${c.weight}" data-w="${c.id}" aria-label="Weight ${esc(c.name)}"></td><td>${c.subs.reduce((a, s) => a + s.max, 0)}</td>${S.vendors.map(v => `<td class="c num" data-cs="${c.id}|${v.id}"></td>`).join('')}</tr>` +
-      c.subs.map(s => `<tr><td>${esc(s.name)}<details><summary>Scoring guide</summary>${esc(s.check)}${s.tiers && s.tiers.some(Boolean) ? `<br>100%: ${esc(s.tiers[0])} · 50%: ${esc(s.tiers[1])} · 30%: ${esc(s.tiers[2])} · 0: ${esc(s.tiers[3])}` : ''}${s.rationale ? '<br><br>' + esc(s.rationale) : ''}</details></td><td></td><td>${s.max}</td>${S.vendors.map(v => { const x = (S.scores[v.id] || {})[s.id]; return `<td class="c"><input class="sc ${x == null ? 'nr' : ''}" type="number" min="${s.min || 0}" max="${s.max}" step="0.5" value="${x == null ? '' : x}" placeholder="NR" data-s="${s.id}" data-v="${v.id}" aria-label="${esc(s.name)} – ${esc(v.name)}"></td>`; }).join('')}</tr>`).join('')).join('')}
+    ${groups().map(g => (groups().length > 1 ? `<tr class="grp"><td colspan="3">${esc(g.name)}</td>${S.vendors.map(v => `<td class="c num" data-gs="${g.id}|${v.id}"></td>`).join('')}</tr>` : '') + gCrit(g).map(c => `<tr class="crit"><td>${esc(c.name)}${groups().length > 1 ? ` <select class="gsel" data-g="${c.id}" aria-label="Category of ${esc(c.name)}">${groups().map(x => `<option value="${x.id}" ${x.id === g.id ? 'selected' : ''}>${esc(x.name.split(' · ')[0])}</option>`).join('')}</select>` : ''}<details><summary>What it measures</summary>${esc(c.desc)}</details></td><td><input class="wt" type="number" min="0" max="100" step="1" value="${c.weight}" data-w="${c.id}" aria-label="Weight ${esc(c.name)}"></td><td data-cm="${c.id}">${c.subs.reduce((a, s) => a + s.max, 0)}</td>${S.vendors.map(v => `<td class="c num" data-cs="${c.id}|${v.id}"></td>`).join('')}</tr>` +
+      c.subs.map(s => `<tr><td>${esc(s.name)}<details><summary>Scoring guide</summary>${esc(s.check)}${s.tiers && s.tiers.some(Boolean) ? `<br>100%: ${esc(s.tiers[0])} · 50%: ${esc(s.tiers[1])} · 30%: ${esc(s.tiers[2])} · 0: ${esc(s.tiers[3])}` : ''}${s.rationale ? '<br><br>' + esc(s.rationale) : ''}</details></td><td></td><td><input class="wt" type="number" min="0.5" step="0.5" value="${s.max}" data-mx="${s.id}" aria-label="Max points ${esc(s.name)}"></td>${S.vendors.map(v => { const x = (S.scores[v.id] || {})[s.id]; return `<td class="c"><input class="sc ${x == null ? 'nr' : ''}" type="number" min="${s.min || 0}" max="${s.max}" step="0.5" value="${x == null ? '' : x}" placeholder="NR" data-s="${s.id}" data-v="${v.id}" aria-label="${esc(s.name)} – ${esc(v.name)}"></td>`; }).join('')}</tr>`).join('')).join('')).join('')}
     </tbody></table></div></div></div>`;
 }
-function fillCritCells() { document.querySelectorAll('[data-cs]').forEach(td => { const [c, v] = td.dataset.cs.split('|'), r = crit(vById(v), S.criteria.find(x => x.id === c)); td.textContent = r.pct == null ? 'Not Rated' : fx1(r.got) + ' / ' + r.max; }); }
+function fillCritCells() { document.querySelectorAll('[data-cs]').forEach(td => { const [c, v] = td.dataset.cs.split('|'), r = crit(vById(v), S.criteria.find(x => x.id === c)); td.textContent = r.pct == null ? 'Not Rated' : fx1(r.got) + ' / ' + r.max; });
+  document.querySelectorAll('[data-gs]').forEach(td => { const [g, v] = td.dataset.gs.split('|'), r = gScore(vById(v), groups().find(x => x.id === g)); td.textContent = r.score == null ? 'Not Rated' : fx1(r.score) + ' / ' + r.w; });
+  document.querySelectorAll('[data-cm]').forEach(td => { td.textContent = S.criteria.find(x => x.id === td.dataset.cm).subs.reduce((a, s) => a + s.max, 0); }); }
 const vSelect = (id, cur) => `<select id="${id}">${S.vendors.map(v => `<option value="${v.id}" ${v.id === cur ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}</select>`;
 function mediaItem(m, v) {
   return `<div class="mitem"><div class="pv">${m.kind === 'image' ? `<img src="${esc(src(m))}" alt="" loading="lazy">` : `<div class="ph">${m.kind === 'link' ? '↗ Link / document' : '▶ Video'}</div>`}</div>
-    <div class="mi"><span title="${esc(m.label)}"><b>${esc(m.label)}</b></span><span class="mut">${esc(m.source)}${v && v.cover === m.id ? ' · Cover' : ''}</span>
+    <div class="mi"><input type="text" value="${esc(m.label)}" data-ml="${m.id}" aria-label="Name" title="Rename"><span class="mut">${esc(m.source)}${v && v.cover === m.id ? ' · Cover' : ''}</span>
     <div class="rowf">${v ? `${m.kind === 'image' ? `<button class="btn sm" data-act="cover" data-v="${v.id}" data-m="${m.id}">Set cover</button>` : ''}<label class="btn sm">Replace<input type="file" hidden accept="image/*,video/*" data-replace="${m.id}" data-v="${v.id}"></label><button class="btn sm" data-act="rm" data-v="${v.id}" data-m="${m.id}">Remove</button>`
       : `<select data-assign="${m.id}"><option value="">Assign to vendor…</option>${S.vendors.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>`}
       <a class="btn sm" href="${esc(orig(m))}" target="_blank" rel="noopener">Open</a></div></div></div>`;
 }
 function modalVendor(v) {
   const f = (k, l, type = 'text') => `<label for="f_${k}">${l}</label><input id="f_${k}" type="${type}" ${type === 'number' ? 'step="any"' : ''} value="${esc(v[k] ?? '')}" data-f="${k}" data-v="${v.id}">`;
-  return `<div class="ov" data-act="close-ov"><div class="dlg narrow"><div class="dhead"><h2>Edit vendor</h2><button class="btn" data-act="close">Done</button></div>
-    <div class="panel"><div class="frm">${f('name', 'Vendor name')}${f('price', 'Price (total)', 'number')}${f('currency', 'Currency')}${f('deliverables', 'Deliverables')}${f('timeline', 'Timeline')}${f('revisions', 'Revision rounds')}
+  return `<div class="ov" data-act="close-ov"><div class="dlg narrow"><div class="dhead"><h2>Edit vendor</h2><span class="rowf"><button class="btn" data-act="del-vendor" data-v="${v.id}">Delete vendor</button><button class="btn primary" data-act="close">Done</button></span></div>
+    <div class="panel"><div class="frm">${f('name', 'Vendor name')}${f('price', 'Price (total)', 'number')}${f('currency', 'Currency')}${f('deliverables', 'Deliverables')}${f('timeline', 'Timeline')}${f('revisions', 'Revision rounds')}${f('rank', 'Recommendation rank', 'number')}${f('recNote', 'Recommendation note')}
       <label for="f_notes">Key notes</label><textarea id="f_notes" data-f="notes" data-v="${v.id}">${esc(v.notes)}</textarea></div>
       <small>Edits are saved in this browser only; the source Excel file is never modified.</small></div>
     <div class="panel"><h3>Add portfolio media</h3><div class="rowf"><label class="btn sm primary">Add images / videos<input type="file" hidden multiple accept="image/*,video/*" data-add="${v.id}"></label>
@@ -219,7 +237,7 @@ function renderLb() {
     <div class="lbmain">${player(m, true)}${list.length > 1 ? `<button class="arrow l" data-act="lb-nav" data-d="-1" aria-label="Previous">‹</button><button class="arrow r" data-act="lb-nav" data-d="1" aria-label="Next">›</button>` : ''}</div></div>`;
   document.body.style.overflow = 'hidden';
 }
-function renderAll() { renderOverview(); renderGallery(); renderCompare(); renderModal(); }
+function renderAll() { renderOverview(); renderGallery(); renderVideos(); renderCompare(); renderModal(); }
 const refreshData = () => { renderOverview(); renderGallery(); renderCmpData(); };
 
 /* ---------- actions ---------- */
@@ -252,6 +270,11 @@ const ACT = {
   'open-scores': () => { ui.modal = { type: 'scores' }; renderModal(); },
   'open-vendor': d => { ui.modal = { type: 'vendor', v: d.v }; renderModal(); },
   close: () => { ui.modal = null; renderAll(); },
+  dir: () => { ui.dir = ui.dir === 'asc' ? 'desc' : 'asc'; renderGallery(); renderVideos(); },
+  vv: d => { ui.vv = d.v; ui.vm = null; renderVideos(); },
+  vm: d => { ui.vm = d.m; renderVideos(); },
+  'add-vendor': () => { const id = 'n' + Date.now().toString(36); S.vendors.push({ id, name: 'New vendor', quote: 'Added manually', currency: (S.project || {}).currency || 'SGD', price: null, items: [], notes: '', timeline: '', revisions: '', caveats: '', deliverables: '', media: [], cover: null }); S.scores[id] = {}; save(); ui.modal = { type: 'vendor', v: id }; renderAll(); },
+  'del-vendor': async d => { const v = vById(d.v); if (!confirm(`Delete “${v.name}” from the dashboard, including its scores and media list? Source files are not deleted.`)) return; S.vendors = S.vendors.filter(x => x.id !== d.v); delete S.scores[d.v]; ui.sel.delete(d.v); ui.modal = null; save(); await gc(); renderAll(); },
   'close-ov': (d, e) => { if (e.target.classList.contains('ov')) ACT.close(); },
   pick: d => { ui.idx[d.v] = +d.i; renderGallery(); },
   'go-compare': () => { renderCompare(); location.hash = '#compare'; $('#compare').scrollIntoView(); },
@@ -268,18 +291,22 @@ const ACT = {
   reset: async () => { if (!confirm('Discard all local edits, scores and imported media, and reload the project data?')) return; localStorage.removeItem(LS); S = clone(window.SEED || DEMO()); ui.sel = new Set(); ui.idx = {}; ui.cidx = {}; await gc(); renderAll(); },
 };
 document.addEventListener('click', e => { const t = e.target.closest('[data-act]'); if (!t || t.tagName === 'SELECT' || t.type === 'checkbox') return; const f = ACT[t.dataset.act]; if (f) f(t.dataset, e); });
+document.addEventListener('focusin', e => { const t = e.target; if (t.matches && t.matches('input.sc, input.wt')) t.select(); }); // typing replaces the old value instead of appending to it
 document.addEventListener('keydown', e => { if (ui.lb) { if (e.key === 'Escape') ACT['lb-close'](); if (e.key === 'ArrowRight') ACT['lb-nav']({ d: 1 }); if (e.key === 'ArrowLeft') ACT['lb-nav']({ d: -1 }); } else if (ui.modal && e.key === 'Escape') ACT.close(); });
 document.addEventListener('input', e => {
   const t = e.target;
-  if (t.dataset.s) { const raw = t.value.trim(), sub = S.criteria.flatMap(c => c.subs).find(s => s.id === t.dataset.s); let x = raw === '' ? null : Math.max(sub.min || 0, Math.min(sub.max, +raw)); if (x != null && isNaN(x)) x = null; (S.scores[t.dataset.v] = S.scores[t.dataset.v] || {})[t.dataset.s] = x; t.classList.toggle('nr', x == null); }
+  if (t.dataset.s) { const raw = t.value.trim(), sub = S.criteria.flatMap(c => c.subs).find(s => s.id === t.dataset.s); let x = raw === '' || isNaN(+raw) ? null : Math.max(sub.min || 0, Math.min(sub.max, +raw)); (S.scores[t.dataset.v] = S.scores[t.dataset.v] || {})[t.dataset.s] = x; t.classList.toggle('nr', x == null); }
   else if (t.dataset.w) { S.criteria.find(c => c.id === t.dataset.w).weight = +t.value || 0; }
+  else if (t.dataset.mx) { const sub = S.criteria.flatMap(c => c.subs).find(s => s.id === t.dataset.mx), mx = +t.value; if (!(mx > 0)) return; sub.max = mx; for (const k in S.scores) { const x = S.scores[k][sub.id]; if (x != null && x > mx) S.scores[k][sub.id] = mx; } document.querySelectorAll(`[data-s="${sub.id}"]`).forEach(i => { i.max = mx; const x = (S.scores[i.dataset.v] || {})[sub.id]; i.value = x == null ? '' : x; }); }
   else return;
   save(); $('#scoreSummary').innerHTML = scoreSummary(); fillCritCells(); refreshData();
 });
 document.addEventListener('change', async e => {
   const t = e.target;
   try {
-    if (t.dataset.act === 'sort') { ui.sort = t.value; renderGallery(); }
+    if (t.dataset.act === 'sort') { ui.sort = t.value; renderGallery(); renderVideos(); }
+    else if (t.dataset.g) { S.criteria.find(c => c.id === t.dataset.g).group = t.value; save(); renderModal(); refreshData(); }
+    else if (t.dataset.ml) { const m = mById(t.dataset.ml); if (m && t.value.trim()) { m.label = t.value.trim(); save(); renderGallery(); renderVideos(); renderCompare(); } }
     else if (t.dataset.act === 'sel') { t.checked ? ui.sel.add(t.dataset.v) : ui.sel.delete(t.dataset.v); renderGallery(); renderCompare(); }
     else if (t.dataset.s) { const x = (S.scores[t.dataset.v] || {})[t.dataset.s]; t.value = x == null ? '' : x; }
     else if (t.dataset.f) { const v = vById(t.dataset.v); v[t.dataset.f] = t.type === 'number' ? (t.value === '' ? null : +t.value) : t.value; save(); refreshData(); renderCompare(); }
