@@ -65,7 +65,19 @@ const OVERRIDES = {
 };
 // Recommended display order (reviewer's call, editable in the app) and the three scoring categories.
 const RANKS = { Hansinok: [1, ''], Willmore: [2, 'Multimedia comparatively weaker'] };
-const GROUPS = [['g1', 'A · Multimedia production quality (storyline & multimedia)', [0, 2]], ['g2', 'B · Large-project experience & quality', [1, 4]], ['g3', 'C · Team capability & delivery', [3, 5, 6, 7]]];
+const GROUPS = [['g1', 'A · Multimedia production quality (storyline & multimedia)', [0, 1]], ['g2', 'B · Large-project experience & quality', [2, 4]], ['g3', 'C · Team capability & delivery', [3, 5, 6, 7]]];
+// Reviewer's scores per criterion (points, criteria 1–8 in workbook order), taken from the comparison exported on 2026-11-20.
+// The export only carries criterion totals, so each total is spread over the sub-items in proportion to their max (0.5 steps).
+const REVIEW = { date: '2026-11-20', scores: {
+  Hansinok: [20, 10, 11, 12.5, 9.5, 8, 5, 8], 'AIP Studioworks': [15.5, 7.5, 8.5, 9, 2, 7.5, 4.5, 6],
+  Willmore: [15.5, 7, 6, 7.5, 7, 7.5, 4.5, 8], 'SNT Visual': [8.5, 4.5, 5, 5.5, 3, 5, 4, 9] } };
+function spread(total, subs) {
+  const M = subs.reduce((a, x) => a + x.max, 0), raw = subs.map(x => total * x.max / M), out = raw.map(r => Math.floor(r * 2 + 1e-9) / 2);
+  let left = Math.round((total - out.reduce((a, b) => a + b, 0)) * 2);
+  const order = raw.map((r, i) => [r - out[i], i]).sort((a, b) => b[0] - a[0]).map(x => x[1]);
+  for (let k = 0; left > 0 && k < 50; k++) { const i = order[k % order.length]; if (out[i] + 0.5 <= subs[i].max) { out[i] += 0.5; left--; } }
+  return out;
+}
 // Vendors whose workbook thumbnails are too small: use the folder originals instead. per = max images per sub-folder.
 const IMG_LIMITS = { Hansinok: { max: 24, per: 9, dropExcel: true } };
 // Portfolio PDFs whose pages are rendering images (one image per page) -> shown as gallery images.
@@ -144,6 +156,8 @@ const url = f => '/files/' + path.relative(ROOT, f).split(path.sep).map(encodeUR
   for (const [name, o] of Object.entries(OVERRIDES)) { const v = st.vendors.find(x => P.sameVendor(x.name, name)); if (!v) continue; Object.assign(v, o.set); for (const [re, u] of o.units) for (const it of v.items) if (re.test(it.label)) it.unit = it.unitOrig = u; v.updated = true; }
   const low = Math.min(...st.vendors.filter(v => v.price != null).map(v => v.price)), ps = st.criteria.flatMap(c => c.subs).find(s => /evaluated price/i.test(s.name));
   for (const v of st.vendors) { if (v.price == null) continue; v.vsLowest = v.price / low - 1; if (v.updated && ps) { const r = v.price / low; (st.scores[v.id] = st.scores[v.id] || {})[ps.id] = ps.max * (r <= 1.1 ? 1 : r <= 1.3 ? 0.5 : r <= 1.5 ? 0.3 : 0); ps.rationale = (ps.rationale || '') + ` Updated ${st.vendors.find(x => x === v).quote.slice(0, 10)}: ${v.name} ${v.currency} ${v.price.toLocaleString('en-SG')} = ${Math.round(r * 100)}% of the lowest quote.`; } delete v.updated; }
+  for (const [name, pts] of Object.entries(REVIEW.scores)) { const v = st.vendors.find(x => P.sameVendor(x.name, name)); if (!v) { console.warn('review: vendor not found', name); continue; } st.criteria.forEach((c, i) => spread(pts[i], c.subs).forEach((x, k) => { (st.scores[v.id] = st.scores[v.id] || {})[c.subs[k].id] = x; })); }
+  st.scoringNote = `criteria from workbook · scores reviewed ${REVIEW.date}`;
   for (const [name, [rank, note]] of Object.entries(RANKS)) { const v = st.vendors.find(x => P.sameVendor(x.name, name)); if (v) { v.rank = rank; v.recNote = note; } }
   st.groups = GROUPS.map(g => ({ id: g[0], name: g[1] })); st.criteria.forEach((c, i) => { c.group = (GROUPS.find(g => g[2].includes(i)) || GROUPS[2])[0]; });
   st.vendors.forEach(v => { const c = v.media.find(m => m.kind === 'image' && !m.doc); v.cover = c ? c.id : null; });
