@@ -187,8 +187,7 @@ function renderCmpData() {
   const vs = cmpVendors(), box = $('#cmpData'); if (!box) return;
   const pi = priceInfo(vs), rk = ranked(), row = (l, f, cls = '') => `<div class="crow ${cls}"><div class="lbl">${l}</div>${vs.map(v => `<div class="${v.rank === 1 ? 'best' : ''}">${f(v)}</div>`).join('')}</div>`;
   const grp = l => `<div class="crow grp"><div class="lbl">${l}</div></div>`, ns = '<span class="mut">Not stated</span>';
-  const scopeDiff = vs.some(v => v.caveats || (v.modelling != null && typeof v.modelling !== 'number')) || new Set(vs.map(v => v.deliverables)).size > 1;
-  $('#cmpWarn').innerHTML = (scopeDiff ? '<div class="note" style="margin:0 0 12px"><b>Different scopes — direct price comparison may not be valid.</b> See “Scope caveats” for each vendor.</div>' : '') + (pi.same ? '' : '<div class="note" style="margin:0 0 12px"><b>Mixed currencies.</b> Prices are not converted without a verified exchange rate, so no lowest price is highlighted.</div>');
+  $('#cmpWarn').innerHTML = (pi.same ? '' : '<div class="note" style="margin:0 0 12px"><b>Mixed currencies.</b> Prices are not converted without a verified exchange rate, so no lowest price is highlighted.</div>');
   box.innerHTML = grp('Price') +
     row('Total Quotation', v => `<div class="big num ${pi.same && v.price === pi.min ? 'low' : ''}">${money(v.price, v.currency)}</div>${pi.same && v.price === pi.min ? '<span class="pill good">Lowest quoted price</span>' : ''}`) +
     row('Discount', v => { const d = disc(v); return d ? `<span class="num">Before discount <s>${money(v.gross, v.currency)}</s> → now <b>${money(v.price, v.currency)}</b></span><br><span class="pill good">Reduced by ${money(d.amt, v.currency)} · ${fx1(d.pct)}% off</span>` : '<span class="mut">No discount stated</span>'; }) +
