@@ -9,7 +9,7 @@ let S, ui = { sel: new Set(), sort: 'rec', dir: 'asc', modal: null, lb: null, id
 const blobUrls = {};
 const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 // Online build: files under /files/ exist only on the local server -> use hosted copies or the OneDrive link.
-function webify() { if (LOCAL) return; for (const m of allMedia()) { const loc = u => (u || '').startsWith('/files/'); if (!loc(m.src) && !loc(m.orig)) continue; if (m.embed) { m.kind = 'embed'; m.src = m.embed; m.orig = m.link || m.embed; } else if (m.web) { if (loc(m.src)) m.src = m.web; m.orig = m.web; } else if (m.link) { m.kind = 'ext'; m.src = m.orig = m.link; } else { m.kind = 'ext'; m.src = m.orig = ''; } } }
+function webify() { if (LOCAL) return; for (const m of allMedia()) { const loc = u => (u || '').startsWith('/files/'); if (!loc(m.src) && !loc(m.orig)) continue; if (m.embed) { m.kind = 'embed'; m.src = m.embed; m.orig = m.link || m.embed; } else if (m.web) { if (loc(m.src)) m.src = m.web; m.orig = m.web; } else if (m.link) { m.kind = 'ext'; m.src = m.orig = m.link; } else if (m.kind === 'video') { m.kind = 'ext'; m.src = m.orig = ''; } else m.offline = true; } } // offline = document too large to host, hidden online
 
 /* ---------- persistence: state in localStorage, imported files in IndexedDB ---------- */
 const idb = () => new Promise((res, rej) => { const r = indexedDB.open('mmhub', 1); r.onupgradeneeded = () => r.result.createObjectStore('blobs'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
@@ -91,7 +91,7 @@ function sorted() {
 }
 function card(v, pi) {
   const im = images(v), i = Math.min(ui.idx[v.id] ?? Math.max(0, im.findIndex(m => m.id === v.cover)), Math.max(0, im.length - 1)), cur = im[i];
-  const vids = v.media.filter(m => m.kind === 'video' || m.kind === 'embed' || m.kind === 'ext'), links = v.media.filter(m => m.kind === 'link');
+  const vids = v.media.filter(m => m.kind === 'video' || m.kind === 'embed' || m.kind === 'ext'), links = v.media.filter(m => m.kind === 'link' && !m.offline);
   const low = pi.same && v.price != null && v.price === pi.min;
   return `<article class="card ${ui.sel.has(v.id) ? 'sel' : ''}">
     <div class="pv ${cur ? 'click' : ''}" ${cur ? `data-act="lb" data-v="${v.id}" data-m="${cur.id}"` : ''}>
