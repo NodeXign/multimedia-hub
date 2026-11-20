@@ -79,8 +79,7 @@ function renderOverview() {
       <div class="kpi"><span>Price Range</span><b class="num">${pi.same ? money(pi.min) + ' – ' + money(pi.max) : '—'}</b><em>${pi.same ? esc(pi.cur) + ' · spread ' + money(pi.max - pi.min) : 'No conversion without a verified rate'}</em></div>
       <div class="kpi"><span>Vendors Evaluated</span><b class="num">${evald} / ${S.vendors.length}</b><em>${S.scoringNote ? esc(S.scoringNote) : S.scoringSource === 'excel' ? 'Scores imported from workbook' : 'Default criteria – awaiting scores'}</em></div>
     </div>
-    ${p.fx && !S.demo ? `<div class="note info">Net totals are in ${esc(p.currency || 'the workbook currency')} exactly as calculated in the workbook, at its own rates (${Object.entries(p.fx).filter(e => e[1] !== 1).map(e => e[0] + ' ' + e[1]).join(', ')}${p.fxNote ? ' – “' + esc(p.fxNote) + '”' : ''}). No other conversion is applied.</div>` : ''}
-    ${p.notes ? `<div class="note">${esc(p.notes)}</div>` : ''}`;
+    ${p.fx && !S.demo ? `<div class="note info">Net totals are in ${esc(p.currency || 'the workbook currency')} exactly as calculated in the workbook, at its own rates (${Object.entries(p.fx).filter(e => e[1] !== 1).map(e => e[0] + ' ' + e[1]).join(', ')}${p.fxNote ? ' – “' + esc(p.fxNote) + '”' : ''}). No other conversion is applied.</div>` : ''}`;
   $('#foot').innerHTML = `Local-first: data and media stay on this computer (browser storage + local files). ${S.source ? 'Seed built from “' + esc(S.source.workbook) + '” on ' + esc(S.source.built) + '.' : ''} ${S.importedFrom ? 'Last Excel import: “' + esc(S.importedFrom) + '”.' : ''}`;
 }
 
