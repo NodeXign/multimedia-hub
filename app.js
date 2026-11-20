@@ -101,7 +101,8 @@ function card(v, pi) {
     <div class="body">
       <div class="row1"><div><h3>${esc(v.name)}</h3><small>${esc(v.quote)}</small></div>
         <div class="price num ${low ? 'low' : ''}"><small>${esc(v.currency)}</small>${money(v.price)}</div></div>
-      <div class="rowf">${v.rank ? `<span class="pill good">Recommended #${v.rank}</span>` : ''}${v.recNote ? `<span class="pill warn">${esc(v.recNote)}</span>` : ''}${low ? '<span class="pill good">Lowest quote</span>' : ''}<span class="pill acc">Score ${scoreLabel(v, true)}</span>${v.docTotal != null && v.origCurrency ? `<span class="pill">Quote doc total ${money(v.docTotal, v.origCurrency)}</span>` : ''}</div>
+      ${disc(v) ? `<small>Before discount <s>${money(v.gross, v.currency)}</s> · reduced by ${money(disc(v).amt, v.currency)} (${fx1(disc(v).pct)}% off)</small>` : ''}
+      <div class="rowf">${recPill(v)}${v.recNote ? `<span class="pill warn">${esc(v.recNote)}</span>` : ''}${low ? '<span class="pill good">Lowest quote</span>' : ''}<span class="pill acc">Score ${scoreLabel(v, true)}</span>${v.docTotal != null && v.origCurrency ? `<span class="pill">Quote doc total ${money(v.docTotal, v.origCurrency)}</span>` : ''}</div>
       <dl><dt>Timeline</dt><dd>${esc(v.timeline) || '<span class="mut">Not stated</span>'}</dd>
         <dt>Scope</dt><dd>${esc(v.deliverables) || '<span class="mut">Not stated</span>'}</dd>
         ${v.caveats ? `<dt>Caveats</dt><dd>${esc(v.caveats)}</dd>` : ''}</dl>
@@ -137,18 +138,41 @@ function buildPrint() {
   const vs = cmpVendors(), pick = v => { const im = images(v).filter(m => !m.doc), c = im.find(m => m.id === v.cover); return [...(c ? [c] : []), ...im.filter(m => m !== c)].slice(0, 6); };
   const fig = m => `<figure><img src="${esc(src(m))}" alt=""><figcaption>${esc(m.label)} · ${esc(m.source)}</figcaption></figure>`;
   $('#printout').innerHTML = `<h1>${esc((S.project || {}).title || 'Vendor comparison')}</h1><p class="mut">Vendor comparison · ${vs.map(v => esc(v.name)).join(' · ')} · exported ${new Date().toISOString().slice(0, 10)}${(S.project || {}).scope ? '<br>' + esc(S.project.scope) : ''}</p>${$('#cmpWarn').innerHTML}
-    <div class="cmp" style="--n:${vs.length}"><div class="crow head"><div class="lbl"></div>${vs.map(v => `<div><h3>${esc(v.name)}</h3><small>${esc(v.quote)}</small></div>`).join('')}</div>
+    <div class="cmp" style="--n:${vs.length}"><div class="crow head"><div class="lbl"></div>${vs.map(cmpHead).join('')}</div>
     <div class="crow media"><div class="lbl">Reference image</div>${vs.map(v => `<div>${pick(v)[0] ? fig(pick(v)[0]) : '<span class="mut">No image</span>'}</div>`).join('')}</div>${$('#cmpData').innerHTML}</div>` +
     vs.map(v => `<div class="ppage"><h2>${esc(v.name)} — reference images</h2><p class="mut">${money(v.price, v.currency)} · Overall score ${scoreLabel(v)}${v.rank ? ' · Recommended #' + v.rank : ''}${v.recNote ? ' · ' + esc(v.recNote) : ''}</p><div class="pgrid">${pick(v).map(fig).join('') || '<span class="mut">No reference images.</span>'}</div></div>`).join('');
   return Promise.all([...$('#printout').querySelectorAll('img')].map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; setTimeout(r, 6000); })));
 }
-function cmpVendors() { return S.vendors.filter(v => ui.sel.has(v.id)).slice(0, 4); }
+const recPill = v => v.rank === 1 ? '<span class="pill best">★ Best-suit recommendation</span>' : v.rank ? `<span class="pill good">Recommended #${v.rank}</span>` : '';
+const disc = v => v.gross != null && v.price != null && v.gross > v.price ? { amt: v.gross - v.price, pct: (1 - v.price / v.gross) * 100 } : null;
+const cmpHead = v => `<div class="${v.rank === 1 ? 'best' : ''}"><h3>${esc(v.name)}</h3><small>${esc(v.quote)}</small><div class="rowf" style="margin-top:6px">${recPill(v)}${v.recNote ? `<span class="pill warn">${esc(v.recNote)}</span>` : ''}</div></div>`;
+function exportXlsx() {
+  const vs = cmpVendors().length >= 2 ? cmpVendors() : S.vendors, pi = priceInfo(vs), rk = ranked(), R = [], row = (l, f) => R.push([l, ...vs.map(f)]), n1 = x => x == null ? '' : Math.round(x * 100) / 100;
+  R.push([(S.project || {}).title || 'Vendor comparison']); R.push(['Exported', new Date().toISOString().slice(0, 10)]); R.push([]); R.push(['', ...vs.map(v => v.name)]);
+  row('Recommendation', v => v.rank === 1 ? 'Best-suit recommendation' : v.rank ? 'Recommended #' + v.rank : ''); row('Recommendation note', v => v.recNote || ''); row('Quotation', v => v.quote || '');
+  row('Currency', v => v.currency || ''); row('Total quotation', v => v.price ?? ''); row('Before discount', v => disc(v) ? v.gross : ''); row('Discount amount', v => disc(v) ? n1(disc(v).amt) : ''); row('Discount %', v => disc(v) ? n1(disc(v).pct) : '');
+  row('Difference vs lowest', v => pi.same && v.price != null ? n1(v.price - pi.min) : ''); row('Difference vs lowest %', v => pi.same && v.price != null ? n1((v.price / pi.min - 1) * 100) : '');
+  row('Quote document total', v => v.docTotal != null ? `${v.origCurrency || ''} ${v.docTotal}` : ''); row('Deliverables', v => v.deliverables || '');
+  for (const l of [...new Set(vs.flatMap(v => (v.items || []).map(i => i.label)))]) row('Unit price – ' + l, v => ((v.items || []).find(i => i.label === l) || {}).unit ?? '');
+  row('Modelling', v => v.modelling ?? ''); row('Scope caveats', v => v.caveats || ''); row('Timeline', v => v.timeline || ''); row('Revision rounds', v => v.revisions || ''); row('Prepayment', v => typeof v.prepay === 'number' ? Math.round(v.prepay * 100) + '%' : v.prepay || ''); row('Key notes', v => v.notes || '');
+  R.push([]); R.push(['EVALUATION (points)']);
+  for (const g of groups()) { if (groups().length > 1) row(`${g.name} (weight ${gScore(vs[0], g).w})`, v => n1(gScore(v, g).score)); for (const c of gCrit(g)) row(`   ${c.name} (weight ${c.weight})`, v => { const r = crit(v, c); return r.pct == null ? 'Not rated' : n1(r.pct * c.weight); }); }
+  row('Overall score / 100', v => n1(overall(v).score)); row('Rank (all rated vendors)', v => rk.includes(v.id) ? rk.indexOf(v.id) + 1 : '');
+  const A = [['Category', 'Criterion', 'Sub-item', 'Criterion weight %', 'Max points', ...S.vendors.map(v => v.name)]];
+  for (const g of groups()) for (const c of gCrit(g)) for (const x of c.subs) A.push([g.name, c.name, x.name, c.weight, x.max, ...S.vendors.map(v => (S.scores[v.id] || {})[x.id] ?? '')]);
+  A.push([]); A.push(['', '', 'Overall score / 100', '', '', ...S.vendors.map(v => n1(overall(v).score))]);
+  const M = [['Vendor', 'Type', 'Name', 'Source', 'Link']]; for (const v of vs) for (const m of v.media) { const u = m.link || orig(m); M.push([v.name, m.kind === 'image' ? 'Image' : m.kind === 'link' ? 'Document' : 'Video', m.label, m.source, u && !/^blob:/.test(u) ? new URL(u, location.href).href : '']); }
+  const wb = XLSX.utils.book_new(), sh = (name, aoa, w) => { const ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = w.map(x => ({ wch: x })); XLSX.utils.book_append_sheet(wb, ws, name); };
+  sh('Comparison', R, [34, ...vs.map(() => 38)]); sh('Scores', A, [34, 36, 40, 16, 11, ...S.vendors.map(() => 18)]); sh('Reference media', M, [26, 10, 44, 18, 80]);
+  XLSX.writeFile(wb, `Ghana-vendor-comparison-${new Date().toISOString().slice(0, 10)}.xlsx`); return { R, A, M };
+}
+function cmpVendors() { return S.vendors.filter(v => ui.sel.has(v.id)).slice(0, 4).sort((a, b) => (a.rank || 99) - (b.rank || 99)); } // recommended vendors first
 function renderCompare() {
   const vs = cmpVendors(), el = $('#compare');
-  const head = `<div class="sec-head"><div><h2>Compare Vendors</h2><p class="lead">Select 2–4 vendors in the gallery. Previews are 16:9, never cropped.</p></div><div class="rowf"><button class="btn primary" data-act="export-pdf" ${vs.length < 2 ? 'disabled' : ''} title="Opens the print dialog – choose “Save as PDF”">Export comparison (PDF)</button><button class="btn" data-act="open-scores">Edit Scores &amp; Weights</button><a class="btn" href="#gallery">← Back to Gallery</a></div></div>`;
+  const head = `<div class="sec-head"><div><h2>Compare Vendors</h2><p class="lead">Select 2–4 vendors in the gallery. Previews are 16:9, never cropped.</p></div><div class="rowf"><button class="btn primary" data-act="export-pdf" ${vs.length < 2 ? 'disabled' : ''} title="Opens the print dialog – choose “Save as PDF”">Export PDF</button><button class="btn primary" data-act="export-xlsx" title="Comparison, all scores and media list as an Excel workbook">Export Excel</button><button class="btn" data-act="open-scores">Edit Scores &amp; Weights</button><a class="btn" href="#gallery">← Back to Gallery</a></div></div>`;
   if (vs.length < 2) { el.innerHTML = head + `<div class="empty">Tick <b>Compare</b> on at least two vendor cards, then click <b>Compare Selected</b>.<br><br><button class="btn" data-act="sel-top">Select the first three vendors</button></div>`; return; }
   el.innerHTML = head + `<div id="cmpWarn"></div><div class="cmp-scroll"><div class="cmp" style="--n:${vs.length}">
-    <div class="crow head"><div class="lbl"></div>${vs.map(v => `<div><h3>${esc(v.name)}</h3><small>${esc(v.quote)}</small></div>`).join('')}</div>
+    <div class="crow head"><div class="lbl"></div>${vs.map(cmpHead).join('')}</div>
     <div class="crow media"><div class="lbl">Portfolio Preview</div>${vs.map(v => `<div id="cp_${v.id}"></div>`).join('')}</div>
     <div id="cmpData"></div></div></div>`;
   vs.forEach(renderCmpPreview); renderCmpData();
@@ -162,12 +186,13 @@ function renderCmpPreview(v) {
 }
 function renderCmpData() {
   const vs = cmpVendors(), box = $('#cmpData'); if (!box) return;
-  const pi = priceInfo(vs), rk = ranked(), row = (l, f, cls = '') => `<div class="crow ${cls}"><div class="lbl">${l}</div>${vs.map(v => `<div>${f(v)}</div>`).join('')}</div>`;
+  const pi = priceInfo(vs), rk = ranked(), row = (l, f, cls = '') => `<div class="crow ${cls}"><div class="lbl">${l}</div>${vs.map(v => `<div class="${v.rank === 1 ? 'best' : ''}">${f(v)}</div>`).join('')}</div>`;
   const grp = l => `<div class="crow grp"><div class="lbl">${l}</div></div>`, ns = '<span class="mut">Not stated</span>';
   const scopeDiff = vs.some(v => v.caveats || (v.modelling != null && typeof v.modelling !== 'number')) || new Set(vs.map(v => v.deliverables)).size > 1;
   $('#cmpWarn').innerHTML = (scopeDiff ? '<div class="note" style="margin:0 0 12px"><b>Different scopes — direct price comparison may not be valid.</b> See “Scope caveats” for each vendor.</div>' : '') + (pi.same ? '' : '<div class="note" style="margin:0 0 12px"><b>Mixed currencies.</b> Prices are not converted without a verified exchange rate, so no lowest price is highlighted.</div>');
   box.innerHTML = grp('Price') +
-    row('Total Quotation', v => `<div class="big num ${pi.same && v.price === pi.min ? 'low' : ''}">${money(v.price, v.currency)}</div>${pi.same && v.price === pi.min ? '<span class="pill good">Lowest quoted price</span>' : ''}${v.gross != null && v.gross !== v.price ? `<div><small>Before discount ${money(v.gross, v.currency)}</small></div>` : ''}`) +
+    row('Total Quotation', v => `<div class="big num ${pi.same && v.price === pi.min ? 'low' : ''}">${money(v.price, v.currency)}</div>${pi.same && v.price === pi.min ? '<span class="pill good">Lowest quoted price</span>' : ''}`) +
+    row('Discount', v => { const d = disc(v); return d ? `<span class="num">Before discount <s>${money(v.gross, v.currency)}</s> → now <b>${money(v.price, v.currency)}</b></span><br><span class="pill good">Reduced by ${money(d.amt, v.currency)} · ${fx1(d.pct)}% off</span>` : '<span class="mut">No discount stated</span>'; }) +
     row('Difference vs lowest', v => !pi.same || v.price == null ? '—' : v.price === pi.min ? '<span class="mut">Lowest of selection</span>' : `<span class="num">+ ${money(v.price - pi.min, v.currency)} (+${fx1((v.price / pi.min - 1) * 100)}%)</span>`) +
     row('Quote document total', v => v.docTotal != null ? `<span class="num">${money(v.docTotal, v.origCurrency)}</span><br><small>${esc(v.source || '')}</small>` : `<span class="mut">—</span>${v.source ? '<br><small>' + esc(v.source) + '</small>' : ''}`) +
     row('Deliverables', v => esc(v.deliverables) || ns) +
@@ -191,7 +216,7 @@ function scoreSummary() {
     <div class="note ${weightsOk() ? 'info' : ''}" style="margin-top:10px">${weightsOk() ? 'Weights total 100%.' : `<b>Weights total ${wsum()}%.</b> They must total 100% – adjust the weights below.`} Overall Score = Σ (criterion points ÷ criterion max × weight). Empty score = “Not Rated” (never counted as zero) and makes the result provisional.</div>`;
 }
 function modalScores() {
-  return `<div class="ov" data-act="close-ov"><div class="dlg"><div class="dhead"><div><h2>Edit Scores &amp; Weights</h2><small>${esc(S.project.scoringTitle || '')}</small></div><button class="btn" data-act="close">Done</button></div>
+  return `<div class="ov" data-act="close-ov"><div class="dlg"><div class="dhead"><div><h2>Edit Scores &amp; Weights</h2><small>${esc(S.project.scoringTitle || '')}</small></div><span class="rowf"><button class="btn" data-act="export-xlsx">Export scores (Excel)</button><button class="btn primary" data-act="close">Done</button></span></div>
     <div class="panel" id="scoreSummary">${scoreSummary()}</div>
     <p class="mut" style="margin:12px 2px 0">Every score, weight and max is editable – click a cell and type. Use the small A/B/C selector to move a criterion to another category.</p>
     <div class="panel tblw"><table><thead><tr><th style="min-width:280px">Criterion / sub-item</th><th>Weight %</th><th>Max</th>${S.vendors.map(v => `<th class="c">${esc(v.name)}</th>`).join('')}</tr></thead><tbody>
@@ -281,6 +306,7 @@ const ACT = {
   'open-vendor': d => { ui.modal = { type: 'vendor', v: d.v }; renderModal(); },
   close: () => { ui.modal = null; renderAll(); },
   'export-pdf': async () => { if (cmpVendors().length < 2) return; await buildPrint(); window.print(); },
+  'export-xlsx': () => { exportXlsx(); },
   dir: () => { ui.dir = ui.dir === 'asc' ? 'desc' : 'asc'; renderGallery(); renderVideos(); },
   vv: d => { ui.vv = d.v; ui.vm = null; renderVideos(); },
   vm: d => { ui.vm = d.m; renderVideos(); },
