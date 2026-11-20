@@ -374,7 +374,7 @@ document.addEventListener('change', async e => {
   else if (window.SEED && !S.importedFrom && S.source && S.source.rev !== window.SEED.source.rev) {
     // seed was rebuilt: refresh project media/names, keep the user's edits, scores and own uploads
     const mine = m => m.source === 'User' || /manually assigned/.test(m.source);
-    for (const sv of window.SEED.vendors) { const v = S.vendors.find(x => x.id === sv.id); if (!v) continue; v.media = [...clone(sv.media), ...v.media.filter(mine)]; if (!v.media.some(m => m.id === v.cover)) v.cover = sv.cover; }
+    for (const sv of window.SEED.vendors) { const v = S.vendors.find(x => x.id === sv.id); if (!v) { S.vendors.push(clone(sv)); S.scores[sv.id] = clone(window.SEED.scores[sv.id] || {}); continue; } v.media = [...clone(sv.media), ...v.media.filter(mine)]; if (!v.media.some(m => m.id === v.cover)) v.cover = sv.cover; }
     S.source = clone(window.SEED.source); save();
   }
   if (window.SEED && !S.importedFrom) for (const sv of window.SEED.vendors) { const v = S.vendors.find(x => x.id === sv.id); if (v) for (const k of ['keynotes', 'company', 'location', 'contact', 'email', 'wechat']) if (v[k] === undefined) v[k] = sv[k]; } // fields added after this browser saved its state
