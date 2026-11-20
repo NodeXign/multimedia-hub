@@ -93,6 +93,8 @@ tr.grp td{background:var(--acc-soft);color:#1f4f85;font-weight:650;border-top:2p
 .scoretbl thead th{position:sticky;top:0;z-index:3;background:#fff;color:var(--ink);font-weight:650;font-size:13px;padding-top:14px;box-shadow:0 1px 0 var(--line)}
 .scoretbl td:first-child,.scoretbl th:first-child{position:sticky;left:0;z-index:2;background:#fff}.scoretbl thead th:first-child{z-index:4}
 .scoretbl tr.crit td:first-child{background:#faf9f7}.scoretbl tr.grp td:first-child{background:var(--acc-soft)}
+.kn{margin:0;padding-left:16px;font-size:13.5px;line-height:1.5}.kn li{margin:0 0 5px}.kn li:last-child{margin:0}
+table.dir td,table.dir th{padding:12px 14px}table.dir thead th{font-size:12.5px}table.dir td{font-size:13.5px}
 /* printable comparison export */
 #printout{display:none}
 @media print{
@@ -103,7 +105,7 @@ body{background:#fff;font-size:11px;overflow:visible!important}body>*:not(#print
 #printout .cmp{min-width:0;border:1px solid var(--line)}
 #printout .crow{grid-template-columns:120px repeat(var(--n),minmax(0,1fr));break-inside:avoid}
 #printout .crow>div{padding:5px 9px;font-size:10.5px}#printout .crow>.lbl{position:static;font-size:10px}
-#printout .big{font-size:14px}#printout small,#printout .pill{font-size:9.5px}
+#printout .big{font-size:14px}#printout small,#printout .pill{font-size:9.5px}#printout .kn{font-size:10px;line-height:1.4;padding-left:13px}
 #printout figure{margin:0;break-inside:avoid}#printout figure img{width:100%;aspect-ratio:16/9;object-fit:contain;background:var(--pv);display:block}
 #printout figcaption{font-size:9.5px;color:var(--mut);margin-top:2px}
 .ppage{break-before:page}.pgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}

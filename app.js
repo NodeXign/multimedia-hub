@@ -142,6 +142,17 @@ function buildPrint() {
     vs.map(v => `<div class="ppage"><h2>${esc(v.name)} — reference images</h2><p class="mut">${money(v.price, v.currency)} · Overall score ${scoreLabel(v)}${v.rank ? ' · Recommended #' + v.rank : ''}${v.recNote ? ' · ' + esc(v.recNote) : ''}</p><div class="pgrid">${pick(v).map(fig).join('') || '<span class="mut">No reference images.</span>'}</div></div>`).join('');
   return Promise.all([...$('#printout').querySelectorAll('img')].map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; setTimeout(r, 6000); })));
 }
+const knList = v => String(v.keynotes || '').split('\n').map(x => x.trim()).filter(Boolean);
+const kn = v => knList(v).length ? `<ul class="kn">${knList(v).map(x => { const i = x.indexOf(': '); return `<li>${i > 0 && i < 28 ? `<b>${esc(x.slice(0, i))}:</b>${esc(x.slice(i + 1))}` : esc(x)}</li>`; }).join('')}</ul>` : '<span class="mut">—</span>';
+function renderDirectory() {
+  const el = $('#directory'); if (!el) return;
+  const c = x => esc(x) || '<span class="mut">—</span>';
+  el.innerHTML = `<div class="sec-head"><div><h2>Vendor Directory</h2><p class="lead">Contact and background record of rendering / multimedia vendors, kept for future projects. Edit a row to update it; new vendors can be added here.</p></div>
+    <div class="rowf"><button class="btn" data-act="export-xlsx">Export Excel</button><button class="btn primary" data-act="add-vendor">＋ Add vendor</button></div></div>
+    <div class="cmp-scroll"><table class="dir"><thead><tr><th>Company</th><th>Location</th><th>Contact person</th><th>Email</th><th>WeChat / other</th><th style="min-width:340px">Key notes</th><th>This project</th><th></th></tr></thead><tbody>
+    ${sorted().map(v => `<tr><td><b>${esc(v.company || v.name)}</b>${v.company && v.company !== v.name ? `<br><small>${esc(v.name)}</small>` : ''}</td><td>${c(v.location)}</td><td>${c(v.contact)}</td><td>${v.email ? `<a href="mailto:${esc(v.email)}">${esc(v.email)}</a>` : c('')}</td><td>${c(v.wechat)}</td><td>${kn(v)}</td>
+      <td class="num">${money(v.price, v.currency)}<br><small>Score ${scoreLabel(v, true)}</small>${v.rank ? '<br>' + recPill(v) : ''}</td><td><button class="btn sm" data-act="open-vendor" data-v="${v.id}">Edit</button></td></tr>`).join('')}</tbody></table></div>`;
+}
 const recPill = v => v.rank === 1 ? '<span class="pill best">★ Best-suit recommendation</span>' : v.rank ? `<span class="pill good">Recommended #${v.rank}</span>` : '';
 const disc = v => v.gross != null && v.price != null && v.gross > v.price ? { amt: v.gross - v.price, pct: (1 - v.price / v.gross) * 100 } : null;
 const cmpHead = v => `<div class="${v.rank === 1 ? 'best' : ''}"><h3>${esc(v.name)}</h3><small>${esc(v.quote)}</small><div class="rowf" style="margin-top:6px">${recPill(v)}${v.recNote ? `<span class="pill warn">${esc(v.recNote)}</span>` : ''}</div></div>`;
@@ -150,10 +161,10 @@ function exportXlsx() {
   R.push([(S.project || {}).title || 'Vendor comparison']); R.push(['Exported', new Date().toISOString().slice(0, 10)]); R.push([]); R.push(['', ...vs.map(v => v.name)]);
   row('Recommendation', v => v.rank === 1 ? 'Best-suit recommendation' : v.rank ? 'Recommended #' + v.rank : ''); row('Recommendation note', v => v.recNote || ''); row('Quotation', v => v.quote || '');
   row('Currency', v => v.currency || ''); row('Total quotation', v => v.price ?? ''); row('Before discount', v => disc(v) ? v.gross : ''); row('Discount amount', v => disc(v) ? n1(disc(v).amt) : ''); row('Discount %', v => disc(v) ? n1(disc(v).pct) : '');
-  row('Difference vs lowest', v => pi.same && v.price != null ? n1(v.price - pi.min) : ''); row('Difference vs lowest %', v => pi.same && v.price != null ? n1((v.price / pi.min - 1) * 100) : '');
+  row('Key notes', v => knList(v).map(x => '• ' + x).join('\n'));
   row('Quote document total', v => v.docTotal != null ? `${v.origCurrency || ''} ${v.docTotal}` : ''); row('Deliverables', v => v.deliverables || '');
   for (const l of [...new Set(vs.flatMap(v => (v.items || []).map(i => i.label)))]) row('Unit price – ' + l, v => ((v.items || []).find(i => i.label === l) || {}).unit ?? '');
-  row('Modelling', v => v.modelling ?? ''); row('Scope caveats', v => v.caveats || ''); row('Timeline', v => v.timeline || ''); row('Revision rounds', v => v.revisions || ''); row('Prepayment', v => typeof v.prepay === 'number' ? Math.round(v.prepay * 100) + '%' : v.prepay || ''); row('Key notes', v => v.notes || '');
+  row('Modelling', v => v.modelling ?? ''); row('Scope caveats', v => v.caveats || ''); row('Timeline', v => v.timeline || ''); row('Revision rounds', v => v.revisions || ''); row('Prepayment', v => typeof v.prepay === 'number' ? Math.round(v.prepay * 100) + '%' : v.prepay || ''); row('Quotation terms', v => v.notes || '');
   R.push([]); R.push(['EVALUATION (points)']);
   for (const g of groups()) { if (groups().length > 1) row(`${g.name} (weight ${gScore(vs[0], g).w})`, v => n1(gScore(v, g).score)); for (const c of gCrit(g)) row(`   ${c.name} (weight ${c.weight})`, v => { const r = crit(v, c); return r.pct == null ? 'Not rated' : n1(r.pct * c.weight); }); }
   row('Overall score / 100', v => n1(overall(v).score)); row('Rank (all rated vendors)', v => rk.includes(v.id) ? rk.indexOf(v.id) + 1 : '');
@@ -163,6 +174,7 @@ function exportXlsx() {
   const M = [['Vendor', 'Type', 'Name', 'Source', 'Link']]; for (const v of vs) for (const m of v.media) { const u = m.link || orig(m); M.push([v.name, m.kind === 'image' ? 'Image' : m.kind === 'link' ? 'Document' : 'Video', m.label, m.source, u && !/^blob:/.test(u) ? new URL(u, location.href).href : '']); }
   const wb = XLSX.utils.book_new(), sh = (name, aoa, w) => { const ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = w.map(x => ({ wch: x })); XLSX.utils.book_append_sheet(wb, ws, name); };
   sh('Comparison', R, [34, ...vs.map(() => 38)]); sh('Scores', A, [34, 36, 40, 16, 11, ...S.vendors.map(() => 18)]); sh('Reference media', M, [26, 10, 44, 18, 80]);
+  sh('Vendor directory', [['Company', 'Vendor (short name)', 'Location', 'Contact person', 'Email', 'WeChat / other', 'Key notes', 'Quotation', 'Currency', 'Price', 'Overall score'], ...S.vendors.map(v => [v.company || v.name, v.name, v.location || '', v.contact || '', v.email || '', v.wechat || '', knList(v).map(x => '• ' + x).join('\n'), v.quote || '', v.currency || '', v.price ?? '', n1(overall(v).score)])], [30, 24, 18, 22, 28, 24, 90, 30, 9, 11, 12]);
   XLSX.writeFile(wb, `Ghana-vendor-comparison-${new Date().toISOString().slice(0, 10)}.xlsx`); return { R, A, M };
 }
 function cmpVendors() { return S.vendors.filter(v => ui.sel.has(v.id)).slice(0, 4).sort((a, b) => (a.rank || 99) - (b.rank || 99)); } // recommended vendors first
@@ -191,13 +203,13 @@ function renderCmpData() {
   box.innerHTML = grp('Price') +
     row('Total Quotation', v => `<div class="big num ${pi.same && v.price === pi.min ? 'low' : ''}">${money(v.price, v.currency)}</div>${pi.same && v.price === pi.min ? '<span class="pill good">Lowest quoted price</span>' : ''}`) +
     row('Discount', v => { const d = disc(v); return d ? `<span class="num">Before discount <s>${money(v.gross, v.currency)}</s> → now <b>${money(v.price, v.currency)}</b></span><br><span class="pill good">Reduced by ${money(d.amt, v.currency)} · ${fx1(d.pct)}% off</span>` : '<span class="mut">No discount stated</span>'; }) +
-    row('Difference vs lowest', v => !pi.same || v.price == null ? '—' : v.price === pi.min ? '<span class="mut">Lowest of selection</span>' : `<span class="num">+ ${money(v.price - pi.min, v.currency)} (+${fx1((v.price / pi.min - 1) * 100)}%)</span>`) +
     row('Quote document total', v => v.docTotal != null ? `<span class="num">${money(v.docTotal, v.origCurrency)}</span><br><small>${esc(v.source || '')}</small>` : `<span class="mut">—</span>${v.source ? '<br><small>' + esc(v.source) + '</small>' : ''}`) +
     row('Deliverables', v => esc(v.deliverables) || ns) +
     row('Unit Price', v => v.items && v.items.length ? `<ul class="items num">${v.items.map(it => `<li><span>${esc(it.label)}</span><span>${money(it.unit, v.currency)}${it.unitOrig != null && v.origCurrency && v.origCurrency !== v.currency ? ` <small>(${money(it.unitOrig, v.origCurrency)})</small>` : ''}</span></li>`).join('')}<li><span>Modelling</span><span>${typeof v.modelling === 'number' ? money(v.modelling, v.currency) : esc(v.modelling ?? '—')}</span></li></ul>` : '<span class="mut">Not itemised</span>') +
     row('Scope caveats', v => esc(v.caveats) || '<span class="mut">None noted</span>') +
+    grp('Key notes') + row('Reviewer assessment', v => kn(v)) +
     grp('Delivery') + row('Timeline', v => esc(v.timeline) || ns) + row('Revision Rounds', v => esc(v.revisions) || ns) +
-    row('Prepayment', v => v.prepay == null ? ns : typeof v.prepay === 'number' ? Math.round(v.prepay * 100) + '%' : esc(v.prepay)) + row('Key notes', v => `<small>${esc(v.notes)}</small>`) +
+    row('Prepayment', v => v.prepay == null ? ns : typeof v.prepay === 'number' ? Math.round(v.prepay * 100) + '%' : esc(v.prepay)) + row('Quotation terms', v => `<small>${esc(v.notes)}</small>`) +
     grp(`Evaluation ${S.scoringNote ? '(' + esc(S.scoringNote) + ' – editable)' : S.scoringSource === 'excel' ? '(criteria &amp; scores from workbook – editable)' : '(default criteria – editable)'}`) +
     groups().map(g => (groups().length > 1 ? row(`<b>${esc(g.name)}</b><br><small>Weight ${gScore(vs[0], g).w}%</small>`, v => { const r = gScore(v, g); return r.score == null ? '<span class="pill warn">Not Rated</span>' : `<b class="num">${fx1(r.score)}</b> / ${r.w}`; }, 'sub') : '') +
       gCrit(g).map(c => row(`${esc(c.name)}<br><small>Weight ${c.weight}%</small>`, v => { const r = crit(v, c); return r.pct == null ? '<span class="pill warn">Not Rated</span>' : `<span class="num"><b>${fx1(r.got)}</b> / ${r.max}</span>${r.rated < r.total ? ' <span class="pill warn">partly rated</span>' : ''}<div class="meter"><i style="width:${Math.round(r.pct * 100)}%"></i></div>`; })).join('')).join('') +
@@ -237,7 +249,9 @@ function modalVendor(v) {
   const f = (k, l, type = 'text') => `<label for="f_${k}">${l}</label><input id="f_${k}" type="${type}" ${type === 'number' ? 'step="any"' : ''} value="${esc(v[k] ?? '')}" data-f="${k}" data-v="${v.id}">`;
   return `<div class="ov" data-act="close-ov"><div class="dlg narrow"><div class="dhead"><h2>Edit vendor</h2><span class="rowf"><button class="btn" data-act="del-vendor" data-v="${v.id}">Delete vendor</button><button class="btn primary" data-act="close">Done</button></span></div>
     <div class="panel"><div class="frm">${f('name', 'Vendor name')}${f('price', 'Price (total)', 'number')}${f('currency', 'Currency')}${f('deliverables', 'Deliverables')}${f('timeline', 'Timeline')}${f('revisions', 'Revision rounds')}${f('rank', 'Recommendation rank', 'number')}${f('recNote', 'Recommendation note')}
-      <label for="f_notes">Key notes</label><textarea id="f_notes" data-f="notes" data-v="${v.id}">${esc(v.notes)}</textarea></div>
+      <label for="f_keynotes">Key notes<br><small>one point per line</small></label><textarea id="f_keynotes" style="min-height:150px" data-f="keynotes" data-v="${v.id}">${esc(v.keynotes || '')}</textarea>
+      <label for="f_notes">Quotation terms</label><textarea id="f_notes" data-f="notes" data-v="${v.id}">${esc(v.notes)}</textarea></div>
+      <h3 style="margin-top:14px">Directory details</h3><div class="frm">${f('company', 'Company (full name)')}${f('location', 'Location')}${f('contact', 'Contact person')}${f('email', 'Email')}${f('wechat', 'WeChat / other contact')}</div>
       <small>Edits are saved in this browser only; the source Excel file is never modified.</small></div>
     <div class="panel"><h3>Add portfolio media</h3><div class="rowf"><label class="btn sm primary">Add images / videos<input type="file" hidden multiple accept="image/*,video/*" data-add="${v.id}"></label>
       <input type="url" id="newUrl" placeholder="Video URL (YouTube, Drive, Vimeo, .mp4…)" style="flex:1;min-width:240px"><button class="btn sm" data-act="add-url" data-v="${v.id}">Add link</button></div></div>
@@ -270,8 +284,8 @@ function renderLb() {
     <div class="lbmain">${player(m, true)}${list.length > 1 ? `<button class="arrow l" data-act="lb-nav" data-d="-1" aria-label="Previous">‹</button><button class="arrow r" data-act="lb-nav" data-d="1" aria-label="Next">›</button>` : ''}</div></div>`;
   document.body.style.overflow = 'hidden';
 }
-function renderAll() { renderOverview(); renderGallery(); renderVideos(); renderCompare(); renderModal(); }
-const refreshData = () => { renderOverview(); renderGallery(); renderCmpData(); };
+function renderAll() { renderOverview(); renderGallery(); renderVideos(); renderCompare(); renderDirectory(); renderModal(); }
+const refreshData = () => { renderOverview(); renderGallery(); renderCmpData(); renderDirectory(); };
 
 /* ---------- actions ---------- */
 async function addFiles(v, files, source = 'User') {
@@ -363,6 +377,7 @@ document.addEventListener('change', async e => {
     for (const sv of window.SEED.vendors) { const v = S.vendors.find(x => x.id === sv.id); if (!v) continue; v.media = [...clone(sv.media), ...v.media.filter(mine)]; if (!v.media.some(m => m.id === v.cover)) v.cover = sv.cover; }
     S.source = clone(window.SEED.source); save();
   }
+  if (window.SEED && !S.importedFrom) for (const sv of window.SEED.vendors) { const v = S.vendors.find(x => x.id === sv.id); if (v) for (const k of ['keynotes', 'company', 'location', 'contact', 'email', 'wechat']) if (v[k] === undefined) v[k] = sv[k]; } // fields added after this browser saved its state
   try { const need = new Set(allMedia().map(m => m.blobId).filter(Boolean)); for (const k of need) { const b = await blobGet(k); if (b) blobUrls[k] = URL.createObjectURL(b); } } catch (e) { console.warn('IndexedDB unavailable', e); }
   const q = new URLSearchParams(location.search), pre = (q.get('compare') || '').split(',').filter(id => vById(id)); // ?compare=id,id preselects vendors
   if (pre.length) ui.sel = new Set(pre.slice(0, 4));
