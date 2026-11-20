@@ -132,10 +132,20 @@ function renderVideos() {
       <div class="rowf" style="justify-content:space-between;margin-top:8px"><span><b>${esc(m.label)}</b> <small>· ${esc(m.source)}</small></span><span class="rowf">${m.link ? `<a class="btn sm" href="${esc(m.link)}" target="_blank" rel="noopener">Open on OneDrive ↗</a>` : ''}<button class="btn sm" data-act="lb" data-v="${v.id}" data-m="${m.id}">Full screen</button></span></div></div>
       <div class="vlist">${list.map((x, k) => `<button class="${x.id === m.id ? 'on' : ''}" data-act="vm" data-m="${x.id}"><span class="num">${k + 1}</span>${esc(x.label)}</button>`).join('')}</div></div>`;
 }
+// Printable export: the comparison table as shown, then one page of reference images per vendor.
+function buildPrint() {
+  const vs = cmpVendors(), pick = v => { const im = images(v).filter(m => !m.doc), c = im.find(m => m.id === v.cover); return [...(c ? [c] : []), ...im.filter(m => m !== c)].slice(0, 6); };
+  const fig = m => `<figure><img src="${esc(src(m))}" alt=""><figcaption>${esc(m.label)} · ${esc(m.source)}</figcaption></figure>`;
+  $('#printout').innerHTML = `<h1>${esc((S.project || {}).title || 'Vendor comparison')}</h1><p class="mut">Vendor comparison · ${vs.map(v => esc(v.name)).join(' · ')} · exported ${new Date().toISOString().slice(0, 10)}${(S.project || {}).scope ? '<br>' + esc(S.project.scope) : ''}</p>${$('#cmpWarn').innerHTML}
+    <div class="cmp" style="--n:${vs.length}"><div class="crow head"><div class="lbl"></div>${vs.map(v => `<div><h3>${esc(v.name)}</h3><small>${esc(v.quote)}</small></div>`).join('')}</div>
+    <div class="crow media"><div class="lbl">Reference image</div>${vs.map(v => `<div>${pick(v)[0] ? fig(pick(v)[0]) : '<span class="mut">No image</span>'}</div>`).join('')}</div>${$('#cmpData').innerHTML}</div>` +
+    vs.map(v => `<div class="ppage"><h2>${esc(v.name)} — reference images</h2><p class="mut">${money(v.price, v.currency)} · Overall score ${scoreLabel(v)}${v.rank ? ' · Recommended #' + v.rank : ''}${v.recNote ? ' · ' + esc(v.recNote) : ''}</p><div class="pgrid">${pick(v).map(fig).join('') || '<span class="mut">No reference images.</span>'}</div></div>`).join('');
+  return Promise.all([...$('#printout').querySelectorAll('img')].map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; setTimeout(r, 6000); })));
+}
 function cmpVendors() { return S.vendors.filter(v => ui.sel.has(v.id)).slice(0, 4); }
 function renderCompare() {
   const vs = cmpVendors(), el = $('#compare');
-  const head = `<div class="sec-head"><div><h2>Compare Vendors</h2><p class="lead">Select 2–4 vendors in the gallery. Previews are 16:9, never cropped.</p></div><div class="rowf"><button class="btn" data-act="open-scores">Edit Scores &amp; Weights</button><a class="btn" href="#gallery">← Back to Gallery</a></div></div>`;
+  const head = `<div class="sec-head"><div><h2>Compare Vendors</h2><p class="lead">Select 2–4 vendors in the gallery. Previews are 16:9, never cropped.</p></div><div class="rowf"><button class="btn primary" data-act="export-pdf" ${vs.length < 2 ? 'disabled' : ''} title="Opens the print dialog – choose “Save as PDF”">Export comparison (PDF)</button><button class="btn" data-act="open-scores">Edit Scores &amp; Weights</button><a class="btn" href="#gallery">← Back to Gallery</a></div></div>`;
   if (vs.length < 2) { el.innerHTML = head + `<div class="empty">Tick <b>Compare</b> on at least two vendor cards, then click <b>Compare Selected</b>.<br><br><button class="btn" data-act="sel-top">Select the first three vendors</button></div>`; return; }
   el.innerHTML = head + `<div id="cmpWarn"></div><div class="cmp-scroll"><div class="cmp" style="--n:${vs.length}">
     <div class="crow head"><div class="lbl"></div>${vs.map(v => `<div><h3>${esc(v.name)}</h3><small>${esc(v.quote)}</small></div>`).join('')}</div>
@@ -270,6 +280,7 @@ const ACT = {
   'open-scores': () => { ui.modal = { type: 'scores' }; renderModal(); },
   'open-vendor': d => { ui.modal = { type: 'vendor', v: d.v }; renderModal(); },
   close: () => { ui.modal = null; renderAll(); },
+  'export-pdf': async () => { if (cmpVendors().length < 2) return; await buildPrint(); window.print(); },
   dir: () => { ui.dir = ui.dir === 'asc' ? 'desc' : 'asc'; renderGallery(); renderVideos(); },
   vv: d => { ui.vv = d.v; ui.vm = null; renderVideos(); },
   vm: d => { ui.vm = d.m; renderVideos(); },
@@ -329,5 +340,8 @@ document.addEventListener('change', async e => {
     S.source = clone(window.SEED.source); save();
   }
   try { const need = new Set(allMedia().map(m => m.blobId).filter(Boolean)); for (const k of need) { const b = await blobGet(k); if (b) blobUrls[k] = URL.createObjectURL(b); } } catch (e) { console.warn('IndexedDB unavailable', e); }
+  const q = new URLSearchParams(location.search), pre = (q.get('compare') || '').split(',').filter(id => vById(id)); // ?compare=id,id preselects vendors
+  if (pre.length) ui.sel = new Set(pre.slice(0, 4));
   webify(); renderAll();
+  if (q.get('print') && pre.length > 1) buildPrint();
 })();
