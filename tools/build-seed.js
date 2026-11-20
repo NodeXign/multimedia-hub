@@ -30,6 +30,19 @@ const VIDEO_NAMES = {
   '1 West Saudi master plan - 4k.mp4': 'Saudi Arabia · West Saudi Master Plan (4K)',
   'DUBAI SOUTH GOLF DISTRICT.mp4': 'Dubai · Dubai South Golf District',
 };
+// OneDrive share links (organisation, view-only) for videos the workbook has no link for (file basename -> link).
+const OD = 'https://surbanajurong-my.sharepoint.com/:v:/g/personal/jiaqi_xu_sjgroup_com/';
+const VIDEO_LINKS = {
+  'DUBAI SOUTH GOLF DISTRICT.mp4': OD + 'IQDUYIjyFluzQ7Pf40NKzgyAAfljHH86AWumU52XEJEuyWY',
+  '53e9e578d26d90cd9f2b2ad3d3d7ceb1.mp4': OD + 'IQCW13FjQXe7QoE0VLiWRtnAATzThJLtGc0ggpxpYxid908',
+  '7154a2c560cc901f6edca6c03126d8ef_raw.mp4': OD + 'IQAcYMIftasYRI6LzWX1vZiMAeDTzHXPxl1wGph0zEGiJiQ',
+  'ce96edddb8d55f7b3fbae58b93ca7d01_raw.mp4': OD + 'IQA8pBeNJzbBS4ZVazDZcj7tAcUwLyK-NC6YY4tlCz9VD9c',
+  '53e9e578d26d90cd9f2b2ad3d3d7ceb1_raw.mp4': OD + 'IQBuZN4V9rhPSpF-ceaULwFaAZxuLc7-FirpKJr4grgF9-w',
+  '8e1128192e819509c04e31bf831f0e06_raw.mp4': OD + 'IQBJ1p8purpYTYQP7W5SsLCRAZ0yELDeapbc74xsQcSSgYk',
+  '0142eedcb6cb50d09b399dd37b9099df_raw.mp4': OD + 'IQDIOJzYT31wS7inq5UWRgVTAWE2e-eeHPqTYhTzAHKX6js',
+  'a0d7f0441418328a222fe6a2f6092bb8_raw.mp4': OD + 'IQB7nbydapTGTZnzfBMWUVpBAWK9NwWbtEmTR6SU9sqqrN8',
+  '特效合集.mp4': OD + 'IQAn2feZWZVITo9urHACIpp6AXx23Q5pdwB3GGf-_2kp96A',
+};
 // Portfolio PDFs whose pages are rendering images (one image per page) -> shown as gallery images.
 const PDF_IMAGES = { '上海中城效果图.pdf': '上海 · 引力中城 效果图', 'Ucharm CG Portfolio.pdf': 'UCHARM CG Portfolio' };
 const pad = k => String(k).padStart(2, '0');
@@ -80,7 +93,7 @@ const url = f => '/files/' + path.relative(ROOT, f).split(path.sep).map(encodeUR
       if (hit) { hit.link = hit.orig; hit.kind = 'video'; hit.src = hit.orig = url(f); hit.source = 'Excel + local file'; }
       else v.media.push({ id: 'f' + (++n), kind: 'video', src: url(f), orig: url(f), label: path.basename(f), fileName: path.basename(f), source: 'Local folder' });
     }
-    v.media.forEach(m => { if (m.fileName && VIDEO_NAMES[m.fileName]) m.label = VIDEO_NAMES[m.fileName]; });
+    v.media.forEach(m => { if (m.fileName && VIDEO_NAMES[m.fileName]) m.label = VIDEO_NAMES[m.fileName]; if (m.kind === 'video' && !m.link && VIDEO_LINKS[m.fileName]) m.link = VIDEO_LINKS[m.fileName]; });
     for (const f of files.filter(f => PDF_IMAGES[path.basename(f)])) {
       const title = PDF_IMAGES[path.basename(f)];
       for (const pg of pdfImages(f, PUB, 'pdf' + (++n))) v.media.push({ id: 'f' + (++n), kind: 'image', src: pg.rel, orig: url(f) + '#page=' + pg.page, label: `${title} ${pad(pg.page)}`, source: 'Local PDF', web: pg.rel });
