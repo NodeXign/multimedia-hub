@@ -65,6 +65,58 @@ function priceInfo(list = S.vendors) {
 function ranked() { return S.vendors.map(v => ({ v, o: overall(v) })).filter(x => x.o.score != null).sort((a, b) => b.o.score - a.o.score).map(x => x.v.id); }
 const scoreLabel = (v, short) => { const o = overall(v); if (o.score == null) return '<span class="pill warn">Not Rated</span>'; return `<span class="num">${fx1(o.score)}</span>${short ? '' : ' / 100'}${o.complete && weightsOk() ? '' : ' <span class="pill warn">Provisional</span>'}`; };
 
+/* ---------- quotation planner: drafts are separate from comparison prices ---------- */
+const Q = window.MMQuotation, QKEY = 'mmhub.quotation.v1';
+let qDrafts = {}, qVendor, qStorageError = false;
+try { qDrafts = JSON.parse(localStorage.getItem(QKEY) || '{}'); if (!qDrafts || typeof qDrafts !== 'object' || Array.isArray(qDrafts)) qDrafts = {}; } catch (_) { qStorageError = true; }
+function qSource() { return (window.SEED?.vendors || []).find(v => v.id === qVendor) || vById(qVendor); }
+function qBase(v) {
+  const defaults = window.SEED?.quotationDefaults?.[v.name];
+  return defaults?.rows ? clone(defaults.rows) : Q.rows(v).map(r => ({ ...r, ...(defaults?.items?.[r.id] || {}) }));
+}
+function qRows(v) {
+  const draft = qDrafts[v.id];
+  if (draft && Array.isArray(draft.rows) && draft.rows.every(r => r && typeof r.id === 'string' && typeof r.label === 'string' && ['image', 'page', 'sec', 'lot'].includes(r.unit) && (r.qty === null || Q.valid(r.qty)) && (r.rate === null || Q.valid(r.rate)))) return draft.rows;
+  return qBase(v);
+}
+function qPersist() {
+  try { localStorage.setItem(QKEY, JSON.stringify(qDrafts)); qStorageError = false; } catch (_) { qStorageError = true; }
+}
+function qSigned(n, cur) { return n == null ? 'Pending rates' : (n > 0 ? '+' : n < 0 ? '−' : '') + money(Math.abs(n), cur); }
+function qTotals() {
+  const v = qSource(), base = qBase(v), rows = qRows(v), t = Q.summary(base, rows, v.price);
+  const box = $('#qTotals'); if (!box) return;
+  box.innerHTML = `<div class="kpis"><div class="kpi"><span>Published quotation</span><b class="num">${money(v.price, v.currency)}</b><em>Reference total; unchanged</em></div><div class="kpi"><span>Baseline itemised budget</span><b class="num">${money(t.base.amount, v.currency)}</b><em>${t.base.missing ? 'Incomplete baseline' : 'Published quantities × rates'}</em></div><div class="kpi"><span>${t.draft.missing ? 'Known subtotal' : 'Scenario budget'}</span><b class="num">${money(t.draft.amount, v.currency)}</b><em>${t.draft.missing ? t.draft.missing + ' row(s) need a quantity or rate' : 'Sum of rounded line totals'}</em></div><div class="kpi"><span>Change vs itemised baseline</span><b class="num">${qSigned(t.delta, v.currency)}</b><em>Vs published quotation: ${qSigned(t.quoteDelta, v.currency)}</em></div></div>`;
+  rows.forEach((r, i) => { const el = document.querySelector(`[data-ql-total="${i}"]`); if (el) el.textContent = r.qty === 0 ? money(0) : Q.valid(r.qty) && Q.valid(r.rate) ? money(Q.round(r.qty * r.rate)) : 'Pending'; });
+  $('#qStatus').textContent = qStorageError ? 'Could not save in this browser. Export JSON to keep your draft.' : qDrafts[v.id] ? 'Draft saved in this browser only. It is not uploaded to GitHub.' : 'Published baseline loaded. Edits will be saved in this browser only.';
+}
+function renderQuotation() {
+  const el = $('#quotation'); if (!el) return;
+  if (!S.vendors.some(v => v.id === qVendor)) qVendor = sorted()[0]?.id;
+  const v = qSource(); if (!v) { el.innerHTML = ''; return; }
+  const base = qBase(v), rows = qRows(v), fmt = n => n == null ? '' : Number(n.toPrecision(14));
+  el.innerHTML = `<div class="sec-head"><div><h2>Quotation Planner</h2><p class="lead">Plan drawing counts, document pages and video duration. Adjust quantities and rates to explore the budget.</p></div><div class="rowf"><button class="btn" data-act="q-export">Export quotation JSON</button><button class="btn" data-act="q-reset">Reset this vendor</button></div></div>
+    <div class="panel"><div class="rowf"><label for="qVendor"><b>Vendor</b></label>${vSelect('qVendor', v.id)}<span class="pill">${esc(v.currency)} · video rates per second</span></div><p id="qStatus" class="mut" role="status" aria-live="polite"></p><div id="qTotals" aria-live="polite"></div>
+    <div class="cmp-scroll"><table class="qtable"><thead><tr><th>Deliverable</th><th>Unit</th><th>Baseline qty</th><th>Baseline rate</th><th>Scenario qty</th><th>Scenario unit rate (${esc(v.currency)})</th><th>Line total (${esc(v.currency)})</th></tr></thead><tbody>${rows.map((r, i) => { const b = base.find(x => x.id === r.id); return `<tr><td><b>${esc(r.label)}</b></td><td>${esc(r.unit)}</td><td class="num">${b ? fmt(b.qty) : '—'}</td><td class="num">${b?.rate == null ? 'Not quoted' : money(b.rate)}</td><td><input type="number" min="0" max="1000000000" step="any" value="${fmt(r.qty)}" data-qi="${i}" data-qfield="qty" aria-label="${esc(r.label)} quantity"></td><td><input type="number" min="0" max="1000000000" step="any" value="${fmt(r.rate)}" placeholder="Not quoted" data-qi="${i}" data-qfield="rate" aria-label="${esc(r.label)} unit rate"></td><td class="num" data-ql-total="${i}"></td></tr>`; }).join('')}</tbody></table></div>
+    <div class="note info">Planning estimate: quantities × unit rates, assuming linear pricing. Multimedia and animation are separate line items; minute-based rates are converted to seconds. No additional tax, discount or minimum fee is applied automatically. Unpriced modelling and other exclusions remain outside the estimate. Confirm scope and commercial terms with the vendor.</div>
+    <p class="mut">${esc(v.notes || '')}</p><details><summary>Shared quotation baseline</summary><p>Export JSON for handover. To publish it for everyone, merge the vendor entry into QUOTATION_DEFAULTS at the top of tools/build-seed.js, rebuild the seed, then deploy. Browser drafts stay private to this browser and survive baseline updates until reset. This page does not write to the repository.</p></details></div>`;
+  qTotals();
+}
+function qDownload() {
+  const v = qSource(), payload = { [v.name]: { rows: clone(qRows(v)) } };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+  const a = document.createElement('a'); a.href = url; a.download = 'quotation-' + v.id + '.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+document.addEventListener('input', e => {
+  const t = e.target; if (t.dataset.qi === undefined) return;
+  const value = t.value.trim() === '' ? null : Number(t.value);
+  if (t.validity.badInput || (value !== null && !Q.valid(value))) { t.setCustomValidity('Enter a finite number between 0 and 1,000,000,000.'); t.reportValidity(); return; }
+  t.setCustomValidity('');
+  const v = qSource(), rows = clone(qRows(v)); rows[Number(t.dataset.qi)][t.dataset.qfield] = value;
+  qDrafts[v.id] = { rows, saved: new Date().toISOString() }; qPersist(); qTotals();
+});
+document.addEventListener('change', e => { if (e.target.id === 'qVendor') { qVendor = e.target.value; renderQuotation(); } });
+
 /* ---------- render ---------- */
 function renderOverview() {
   const pi = priceInfo(), evald = S.vendors.filter(v => overall(v).complete).length, p = S.project || {};
@@ -284,7 +336,7 @@ function renderLb() {
     <div class="lbmain">${player(m, true)}${list.length > 1 ? `<button class="arrow l" data-act="lb-nav" data-d="-1" aria-label="Previous">‹</button><button class="arrow r" data-act="lb-nav" data-d="1" aria-label="Next">›</button>` : ''}</div></div>`;
   document.body.style.overflow = 'hidden';
 }
-function renderAll() { renderOverview(); renderGallery(); renderVideos(); renderCompare(); renderDirectory(); renderModal(); }
+function renderAll() { renderOverview(); renderGallery(); renderVideos(); renderCompare(); renderDirectory(); renderQuotation(); renderModal(); }
 const refreshData = () => { renderOverview(); renderGallery(); renderCmpData(); renderDirectory(); };
 
 /* ---------- actions ---------- */
@@ -313,6 +365,8 @@ async function importExcel(file) {
   return st;
 }
 const ACT = {
+  'q-export': qDownload,
+  'q-reset': () => { if (!confirm('Discard this vendor’s quotation draft and load the current published baseline?')) return; delete qDrafts[qVendor]; qPersist(); renderQuotation(); },
   'open-import': () => { ui.modal = { type: 'import' }; renderModal(); },
   'open-scores': () => { ui.modal = { type: 'scores' }; renderModal(); },
   'open-vendor': d => { ui.modal = { type: 'vendor', v: d.v }; renderModal(); },

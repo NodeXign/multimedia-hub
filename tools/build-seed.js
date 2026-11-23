@@ -6,6 +6,20 @@ const XLSX = require('xlsx'), JSZip = require('jszip'), P = require('../public/l
 const ROOT = path.resolve(__dirname, '..', '..');           // the Ghana project folder
 const PUB = path.resolve(__dirname, '..', 'public');
 const WORKBOOK = process.argv[2] || path.join(ROOT, 'Ghana Rendering Quotation_Updated.xlsx');
+// Shared planner baseline: merge a vendor entry exported by Quotation Planner here.
+// Quantities/rates for video use seconds. Source workbook data is never changed.
+const QUOTATION_DEFAULTS = {
+  Hansinok: { items: { item3: { qty: 285, rate: 20 } } }, // formal update: 285 s @ S$20/s
+};
+// Refresh planner constants without rebuilding media (Windows does not provide sips).
+if (process.argv.includes('--planner-only')) {
+  const file = path.join(PUB, 'data', 'seed.js');
+  const state = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^window\.SEED=/, '').trim().replace(/;$/, ''));
+  state.quotationDefaults = QUOTATION_DEFAULTS;
+  fs.writeFileSync(file, 'window.SEED=' + JSON.stringify(state) + ';\n');
+  console.log('Updated planner defaults; workbook and media unchanged.');
+  process.exit(0);
+}
 // Vendor portfolio folders (folder name -> vendor name as written in the workbook).
 const FOLDERS = {
   'UCHARM 参考资料 261012': 'UCHARM CG', 'Hansinok 参考资料 261012': 'Hansinok', 'AIP报价及参考资料': 'AIP Studioworks',
@@ -210,6 +224,7 @@ const url = f => '/files/' + path.relative(ROOT, f).split(path.sep).map(encodeUR
   for (const [name, [rank, note]] of Object.entries(RANKS)) { const v = st.vendors.find(x => P.sameVendor(x.name, name)); if (v) { v.rank = rank; v.recNote = note; } }
   st.groups = GROUPS.map(g => ({ id: g[0], name: g[1] })); st.criteria.forEach((c, i) => { c.group = (GROUPS.find(g => g[2].includes(i)) || GROUPS[2])[0]; });
   st.vendors.forEach(v => { const c = v.media.find(m => m.kind === 'image' && !m.doc); v.cover = c ? c.id : null; });
+  st.quotationDefaults = QUOTATION_DEFAULTS;
   st.source = { workbook: path.basename(WORKBOOK), built: new Date().toISOString().slice(0, 10), rev: Date.now() };
   fs.writeFileSync(path.join(PUB, 'data', 'seed.js'), 'window.SEED=' + JSON.stringify(st) + ';\n');
   console.log(st.vendors.map(v => `${v.name}: ${v.currency} ${v.price} | img ${v.media.filter(m => m.kind === 'image').length} vid ${v.media.filter(m => m.kind === 'video' || m.kind === 'embed').length} link ${v.media.filter(m => m.kind === 'link').length}`).join('\n'));

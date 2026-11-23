@@ -110,3 +110,5 @@ body{background:#fff;font-size:11px;overflow:visible!important}body>*:not(#print
 #printout figcaption{font-size:9.5px;color:var(--mut);margin-top:2px}
 .ppage{break-before:page}.pgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 }
+/* Quotation planner */
+.qtable{width:100%;border-collapse:collapse;min-width:860px;font-size:14px}.qtable th,.qtable td{padding:12px;text-align:left;border-bottom:1px solid #dce2e8}.qtable th{background:#f0f4f8}.qtable input{width:130px;min-height:40px;font-size:16px}.qtable td:last-child{text-align:right;font-weight:600}#qStatus{margin:12px 0}#quotation .kpi b{font-size:24px}#quotation .note{margin-top:18px}
