@@ -112,3 +112,5 @@ body{background:#fff;font-size:11px;overflow:visible!important}body>*:not(#print
 }
 /* Quotation planner */
 .qtable{width:100%;border-collapse:collapse;min-width:860px;font-size:14px}.qtable th,.qtable td{padding:12px;text-align:left;border-bottom:1px solid #dce2e8}.qtable th{background:#f0f4f8}.qtable input{width:130px;min-height:40px;font-size:16px}.qtable td:last-child{text-align:right;font-weight:600}#qStatus{margin:12px 0}#quotation .kpi b{font-size:24px}#quotation .note{margin-top:18px}
+/* Planner scenario in Compare */
+.scenbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin:0 0 12px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card)}.scenbar label{display:flex;align-items:center;gap:8px;cursor:pointer}.scenbar input[type=text]{min-width:260px;flex:0 1 320px}.crow.grp small{font-weight:400;text-transform:none;letter-spacing:0;color:var(--mut);margin-left:8px}.items li.chg{font-weight:600}.items li.chg span:first-child{white-space:normal}small.was{font-weight:400;color:var(--mut);text-decoration:line-through}
