@@ -95,7 +95,7 @@ function renderQuotation() {
   if (!S.vendors.some(v => v.id === qVendor)) qVendor = sorted()[0]?.id;
   const v = qSource(); if (!v) { el.innerHTML = ''; return; }
   const base = qBase(v), rows = qRows(v), fmt = n => n == null ? '' : Number(n.toPrecision(14));
-  el.innerHTML = `<div class="sec-head"><div><h2>Quotation Planner</h2><p class="lead">Plan drawing counts, document pages and video duration. Adjust quantities and rates to explore the budget.</p></div><div class="rowf"><button class="btn" data-act="q-export">Export quotation JSON</button><button class="btn" data-act="q-reset">Reset this vendor</button></div></div>
+  el.innerHTML = `<div class="sec-head"><div><h2>Quotation Planner</h2><p class="lead">Plan drawing counts, document pages and video duration. Adjust quantities and rates to explore the budget.</p></div><div class="rowf"><button class="btn primary" data-act="q-apply-all" title="Copies the scenario quantities of this vendor to every other vendor; each vendor keeps its own unit rates">Apply quantities to all vendors</button><button class="btn" data-act="q-compare">Show in Compare</button><button class="btn" data-act="q-export">Export quotation JSON</button><button class="btn" data-act="q-reset">Reset this vendor</button><button class="btn" data-act="q-reset-all">Reset all</button></div></div>
     <div class="panel"><div class="rowf"><label for="qVendor"><b>Vendor</b></label>${vSelect('qVendor', v.id)}<span class="pill">${esc(v.currency)} · video rates per second</span></div><p id="qStatus" class="mut" role="status" aria-live="polite"></p><div id="qTotals" aria-live="polite"></div>
     <div class="cmp-scroll"><table class="qtable"><thead><tr><th>Deliverable</th><th>Unit</th><th>Baseline qty</th><th>Baseline rate</th><th>Scenario qty</th><th>Scenario unit rate (${esc(v.currency)})</th><th>Line total (${esc(v.currency)})</th></tr></thead><tbody>${rows.map((r, i) => { const b = base.find(x => x.id === r.id); return `<tr><td><b>${esc(r.label)}</b></td><td>${esc(r.unit)}</td><td class="num">${b ? fmt(b.qty) : '—'}</td><td class="num">${b?.rate == null ? 'Not quoted' : money(b.rate)}</td><td><input type="number" min="0" max="1000000000" step="any" value="${fmt(r.qty)}" data-qi="${i}" data-qfield="qty" aria-label="${esc(r.label)} quantity"></td><td><input type="number" min="0" max="1000000000" step="any" value="${fmt(r.rate)}" placeholder="Not quoted" data-qi="${i}" data-qfield="rate" aria-label="${esc(r.label)} unit rate"></td><td class="num" data-ql-total="${i}"></td></tr>`; }).join('')}</tbody></table></div>
     <div class="note info">Planning estimate: quantities × unit rates, assuming linear pricing. Multimedia and animation are separate line items; minute-based rates are converted to seconds. No additional tax, discount or minimum fee is applied automatically. Unpriced modelling and other exclusions remain outside the estimate. Confirm scope and commercial terms with the vendor.</div>
@@ -113,9 +113,30 @@ document.addEventListener('input', e => {
   if (t.validity.badInput || (value !== null && !Q.valid(value))) { t.setCustomValidity('Enter a finite number between 0 and 1,000,000,000.'); t.reportValidity(); return; }
   t.setCustomValidity('');
   const v = qSource(), rows = clone(qRows(v)); rows[Number(t.dataset.qi)][t.dataset.qfield] = value;
-  qDrafts[v.id] = { rows, saved: new Date().toISOString() }; qPersist(); qTotals();
+  qDrafts[v.id] = { rows, saved: new Date().toISOString() }; qPersist(); qTotals(); if (scen.show) renderCmpData();
 });
 document.addEventListener('change', e => { if (e.target.id === 'qVendor') { qVendor = e.target.value; renderQuotation(); } });
+
+/* ---------- planner scenario shown in Compare (optional; published quotations stay as they are) ---------- */
+const SKEY = 'mmhub.scenario.v1';
+const scen = { show: false, name: '' };
+try { const x = JSON.parse(localStorage.getItem(SKEY) || '{}'); if (x && typeof x === 'object') { scen.show = !!x.show; scen.name = String(x.name || '').slice(0, 80); } } catch (_) {}
+const scenSave = () => { try { localStorage.setItem(SKEY, JSON.stringify(scen)); } catch (_) {} };
+const qSrc = v => (window.SEED?.vendors || []).find(x => x.id === v.id) || v;
+const qNum = n => n == null ? '—' : Number(Number(n).toPrecision(12)).toLocaleString('en-SG', { maximumFractionDigits: 2 });
+function qScen(v) { // planner draft if the vendor has one, otherwise its published baseline
+  const s = qSrc(v), base = qBase(s), rows = qRows(s), t = Q.total(rows);
+  const lines = rows.map(r => { const b = base.find(x => x.id === r.id) || {}; return { ...r, line: r.qty === 0 ? 0 : Q.valid(r.qty) && Q.valid(r.rate) ? Q.round(r.qty * r.rate) : null, bQty: b.qty ?? null, bRate: b.rate ?? null, changed: (b.qty ?? null) !== r.qty || (b.rate ?? null) !== r.rate }; });
+  const priced = lines.some(l => l.rate != null);
+  return { lines, priced, total: priced ? t.amount : null, missing: t.missing, delta: priced && !t.missing && Q.valid(v.price) ? Q.round(t.amount - v.price) : null, edited: lines.some(l => l.changed) };
+}
+function scenInfo(vs) { // lowest complete scenario total, only when all selected vendors share one currency
+  const all = vs.map(v => ({ v, s: qScen(v) })), ok = all.filter(x => x.s.priced && !x.s.missing), same = new Set(vs.map(v => v.currency)).size === 1;
+  return { all, min: same && ok.length > 1 ? Math.min(...ok.map(x => x.s.total)) : null, edited: all.some(x => x.s.edited) };
+}
+const scenTitle = () => scen.name.trim() || 'Quotation Planner scenario';
+document.addEventListener('change', e => { if (e.target.id === 'scenShow') { scen.show = e.target.checked; scenSave(); renderCmpData(); } });
+document.addEventListener('input', e => { if (e.target.id === 'scenName') { scen.name = e.target.value.slice(0, 80); scenSave(); if (scen.show) renderCmpData(); } });
 
 /* ---------- render ---------- */
 function renderOverview() {
@@ -213,6 +234,11 @@ function exportXlsx() {
   R.push([(S.project || {}).title || 'Vendor comparison']); R.push(['Exported', new Date().toISOString().slice(0, 10)]); R.push([]); R.push(['', ...vs.map(v => v.name)]);
   row('Recommendation', v => v.rank === 1 ? 'Best-suit recommendation' : v.rank ? 'Recommended #' + v.rank : ''); row('Recommendation note', v => v.recNote || ''); row('Quotation', v => v.quote || '');
   row('Currency', v => v.currency || ''); row('Total quotation', v => v.price ?? ''); row('Before discount', v => disc(v) ? v.gross : ''); row('Discount amount', v => disc(v) ? n1(disc(v).amt) : ''); row('Discount %', v => disc(v) ? n1(disc(v).pct) : '');
+  const SC = [['Scenario', scenTitle()], ['Planning estimate: quantity × unit rate per vendor. Not a vendor quotation.'], [], ['Vendor', 'Deliverable', 'Unit', 'Quoted qty', 'Quoted unit rate', 'Scenario qty', 'Scenario unit rate', 'Scenario line total', 'Changed']];
+  if (scen.show) { const si = scenInfo(vs), of = v => si.all.find(x => x.v === v).s;
+    row('Scenario', () => scenTitle()); row('Scenario total', v => of(v).priced ? of(v).total : ''); row('Scenario change vs quotation', v => of(v).delta ?? (of(v).missing ? 'Incomplete' : '')); row('Scenario change %', v => of(v).delta != null && v.price ? n1(of(v).delta / v.price * 100) : '');
+    for (const l of [...new Set(vs.flatMap(v => of(v).lines.filter(x => x.qty !== 0 || x.changed).map(x => x.label)))]) row('Scenario – ' + l, v => { const x = of(v).lines.find(y => y.label === l); return x ? `${n1(x.qty)} ${x.unit} × ${x.rate == null ? 'no rate' : n1(x.rate)} = ${x.line == null ? 'pending' : x.line}` : ''; });
+    for (const v of vs) { const s = of(v); for (const x of s.lines) SC.push([v.name, x.label, x.unit, x.bQty ?? '', x.bRate == null ? '' : n1(x.bRate), x.qty ?? '', x.rate == null ? '' : n1(x.rate), x.line ?? '', x.changed ? 'Yes' : '']); SC.push([v.name, 'TOTAL', v.currency || '', '', '', '', '', s.priced ? s.total : '', '']); SC.push([v.name, 'Quotation', v.currency || '', '', '', '', '', v.price ?? '', '']); SC.push([v.name, 'Change vs quotation', v.currency || '', '', '', '', '', s.delta ?? '', '']); SC.push([]); } }
   row('Key notes', v => knList(v).map(x => '• ' + x).join('\n'));
   row('Quote document total', v => v.docTotal != null ? `${v.origCurrency || ''} ${v.docTotal}` : ''); row('Deliverables', v => v.deliverables || '');
   for (const l of [...new Set(vs.flatMap(v => (v.items || []).map(i => i.label)))]) row('Unit price – ' + l, v => ((v.items || []).find(i => i.label === l) || {}).unit ?? '');
@@ -225,16 +251,16 @@ function exportXlsx() {
   A.push([]); A.push(['', '', 'Overall score / 100', '', '', ...S.vendors.map(v => n1(overall(v).score))]);
   const M = [['Vendor', 'Type', 'Name', 'Source', 'Link']]; for (const v of vs) for (const m of v.media) { const u = m.link || orig(m); M.push([v.name, m.kind === 'image' ? 'Image' : m.kind === 'link' ? 'Document' : 'Video', m.label, m.source, u && !/^blob:/.test(u) ? new URL(u, location.href).href : '']); }
   const wb = XLSX.utils.book_new(), sh = (name, aoa, w) => { const ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = w.map(x => ({ wch: x })); XLSX.utils.book_append_sheet(wb, ws, name); };
-  sh('Comparison', R, [34, ...vs.map(() => 38)]); sh('Scores', A, [34, 36, 40, 16, 11, ...S.vendors.map(() => 18)]); sh('Reference media', M, [26, 10, 44, 18, 80]);
+  sh('Comparison', R, [34, ...vs.map(() => 38)]); sh('Scores', A, [34, 36, 40, 16, 11, ...S.vendors.map(() => 18)]); if (scen.show) sh('Scenario', SC, [26, 30, 8, 12, 16, 13, 17, 18, 9]); sh('Reference media', M, [26, 10, 44, 18, 80]);
   sh('Vendor directory', [['Company', 'Vendor (short name)', 'Location', 'Contact person', 'Email', 'WeChat / other', 'Key notes', 'Quotation', 'Currency', 'Price', 'Overall score'], ...S.vendors.map(v => [v.company || v.name, v.name, v.location || '', v.contact || '', v.email || '', v.wechat || '', knList(v).map(x => '• ' + x).join('\n'), v.quote || '', v.currency || '', v.price ?? '', n1(overall(v).score)])], [30, 24, 18, 22, 28, 24, 90, 30, 9, 11, 12]);
-  XLSX.writeFile(wb, `Ghana-vendor-comparison-${new Date().toISOString().slice(0, 10)}.xlsx`); return { R, A, M };
+  XLSX.writeFile(wb, `Ghana-vendor-comparison-${new Date().toISOString().slice(0, 10)}.xlsx`); return { R, A, M, SC };
 }
 function cmpVendors() { return S.vendors.filter(v => ui.sel.has(v.id)).slice(0, 4).sort((a, b) => (a.rank || 99) - (b.rank || 99)); } // recommended vendors first
 function renderCompare() {
   const vs = cmpVendors(), el = $('#compare');
   const head = `<div class="sec-head"><div><h2>Compare Vendors</h2><p class="lead">Select 2–4 vendors in the gallery. Previews are 16:9, never cropped.</p></div><div class="rowf"><button class="btn primary" data-act="export-pdf" ${vs.length < 2 ? 'disabled' : ''} title="Opens the print dialog – choose “Save as PDF”">Export PDF</button><button class="btn primary" data-act="export-xlsx" title="Comparison, all scores and media list as an Excel workbook">Export Excel</button><button class="btn" data-act="open-scores">Edit Scores &amp; Weights</button><a class="btn" href="#gallery">← Back to Gallery</a></div></div>`;
   if (vs.length < 2) { el.innerHTML = head + `<div class="empty">Tick <b>Compare</b> on at least two vendor cards, then click <b>Compare Selected</b>.<br><br><button class="btn" data-act="sel-top">Select the first three vendors</button></div>`; return; }
-  el.innerHTML = head + `<div id="cmpWarn"></div><div class="cmp-scroll"><div class="cmp" style="--n:${vs.length}">
+  el.innerHTML = head + `<div class="scenbar"><label><input type="checkbox" id="scenShow" ${scen.show ? 'checked' : ''}> <b>Show Quotation Planner scenario</b></label><input id="scenName" type="text" maxlength="80" placeholder="Scenario name, e.g. 4 min multimedia" value="${esc(scen.name)}" aria-label="Scenario name"><a class="btn sm" href="#quotation">Edit quantities in Quotation Planner</a><small class="mut">Adds scenario rows under Price, also in the PDF and Excel export. Published quotations are not changed.</small></div><div id="cmpWarn"></div><div class="cmp-scroll"><div class="cmp" style="--n:${vs.length}">
     <div class="crow head"><div class="lbl"></div>${vs.map(cmpHead).join('')}</div>
     <div class="crow media"><div class="lbl">Portfolio Preview</div>${vs.map(v => `<div id="cp_${v.id}"></div>`).join('')}</div>
     <div id="cmpData"></div></div></div>`;
@@ -247,6 +273,16 @@ function renderCmpPreview(v) {
       ${vis.length > 1 ? `<button class="arrow l" data-act="cnav" data-v="${v.id}" data-d="-1" aria-label="Previous">‹</button><button class="arrow r" data-act="cnav" data-v="${v.id}" data-d="1" aria-label="Next">›</button>` : ''}</div>
     <div class="rowf" style="justify-content:space-between;margin-top:6px"><small>${m ? (i + 1) + ' / ' + vis.length + ' · ' + esc(m.kind === 'image' ? 'Image' : 'Video') + ' · ' + esc(m.label) : ''}</small>${m ? `<button class="btn sm" data-act="lb" data-v="${v.id}" data-m="${m.id}">Full screen</button>` : ''}</div>`;
 }
+function scenRows(vs, row, grp) {
+  if (!scen.show) return '';
+  const si = scenInfo(vs), of = v => si.all.find(x => x.v === v).s, was = (a, b, u) => a === b ? '' : ` <small class="was">was ${qNum(b)}${u}</small>`;
+  return grp(`Scenario · ${esc(scenTitle())} <small>planning estimate: quantity × unit rate, not a vendor quotation</small>`) +
+    row('Scenario total', v => { const s = of(v); if (!s.priced) return '<span class="mut">Not itemised</span>';
+      return `<div class="big num ${si.min != null && !s.missing && s.total === si.min ? 'low' : ''}">${money(s.total, v.currency)}</div>${s.missing ? `<span class="pill warn">Incomplete – ${s.missing} line(s) without a rate</span>` : (si.min != null && s.total === si.min ? '<span class="pill good">Lowest in this scenario</span> ' : '') + (s.delta == null ? '' : s.delta === 0 ? '<span class="pill">Same as quotation</span>' : `<span class="pill ${s.delta < 0 ? 'good' : 'warn'}">${qSigned(s.delta, v.currency)} vs quotation${v.price ? ' · ' + (s.delta > 0 ? '+' : '−') + fx1(Math.abs(s.delta / v.price * 100)) + '%' : ''}</span>`)}`; }) +
+    row('Scenario quantities', v => { const s = of(v), ls = s.lines.filter(l => l.qty !== 0 || l.changed); if (!s.priced) return '<span class="mut">—</span>';
+      return `<ul class="items num">${ls.map(l => `<li class="${l.changed ? 'chg' : ''}"><span>${esc(l.label)} · ${qNum(l.qty)} ${esc(l.unit)}${was(l.qty, l.bQty, '')} × ${l.rate == null ? 'no rate' : qNum(l.rate)}${l.rate == null ? '' : was(l.rate, l.bRate, '')}</span><span>${l.line == null ? 'Pending' : money(l.line)}</span></li>`).join('')}</ul>`; }) +
+    (si.edited ? '' : `<div class="crow"><div class="lbl"></div><div style="grid-column:2/-1"><span class="mut">No planner changes yet for these vendors – scenario totals equal the itemised quotations. Change quantities in Quotation Planner, then use “Apply quantities to all vendors”.</span></div></div>`);
+}
 function renderCmpData() {
   const vs = cmpVendors(), box = $('#cmpData'); if (!box) return;
   const pi = priceInfo(vs), rk = ranked(), row = (l, f, cls = '') => `<div class="crow ${cls}"><div class="lbl">${l}</div>${vs.map(v => `<div class="${v.rank === 1 ? 'best' : ''}">${f(v)}</div>`).join('')}</div>`;
@@ -255,6 +291,7 @@ function renderCmpData() {
   box.innerHTML = grp('Price') +
     row('Total Quotation', v => `<div class="big num ${pi.same && v.price === pi.min ? 'low' : ''}">${money(v.price, v.currency)}</div>${pi.same && v.price === pi.min ? '<span class="pill good">Lowest quoted price</span>' : ''}`) +
     row('Discount', v => { const d = disc(v); return d ? `<span class="num">Before discount <s>${money(v.gross, v.currency)}</s> → now <b>${money(v.price, v.currency)}</b></span><br><span class="pill good">Reduced by ${money(d.amt, v.currency)} · ${fx1(d.pct)}% off</span>` : '<span class="mut">No discount stated</span>'; }) +
+    scenRows(vs, row, grp) +
     row('Quote document total', v => v.docTotal != null ? `<span class="num">${money(v.docTotal, v.origCurrency)}</span><br><small>${esc(v.source || '')}</small>` : `<span class="mut">—</span>${v.source ? '<br><small>' + esc(v.source) + '</small>' : ''}`) +
     row('Deliverables', v => esc(v.deliverables) || ns) +
     row('Unit Price', v => v.items && v.items.length ? `<ul class="items num">${v.items.map(it => `<li><span>${esc(it.label)}</span><span>${money(it.unit, v.currency)}${it.unitOrig != null && v.origCurrency && v.origCurrency !== v.currency ? ` <small>(${money(it.unitOrig, v.origCurrency)})</small>` : ''}</span></li>`).join('')}<li><span>Modelling</span><span>${typeof v.modelling === 'number' ? money(v.modelling, v.currency) : esc(v.modelling ?? '—')}</span></li></ul>` : '<span class="mut">Not itemised</span>') +
@@ -366,7 +403,13 @@ async function importExcel(file) {
 }
 const ACT = {
   'q-export': qDownload,
-  'q-reset': () => { if (!confirm('Discard this vendor’s quotation draft and load the current published baseline?')) return; delete qDrafts[qVendor]; qPersist(); renderQuotation(); },
+  'q-reset': () => { if (!confirm('Discard this vendor’s quotation draft and load the current published baseline?')) return; delete qDrafts[qVendor]; qPersist(); renderQuotation(); renderCmpData(); },
+  'q-reset-all': () => { if (!confirm('Discard the quotation drafts of all vendors and load the published baselines?')) return; qDrafts = {}; qPersist(); renderQuotation(); renderCmpData(); },
+  'q-apply-all': () => { const v = qSource(), from = qRows(v), others = S.vendors.filter(x => x.id !== v.id);
+    if (!confirm(`Copy the scenario quantities of ${v.name} to the other ${others.length} vendors? Each vendor keeps its own unit rates; existing quantity drafts of those vendors are replaced.`)) return;
+    for (const o of others) { const rows = clone(qRows(qSrc(o))); for (const r of rows) { const m = from.find(x => x.label === r.label && x.unit === r.unit); if (m && r.unit !== 'lot') r.qty = m.qty; } qDrafts[o.id] = { rows, saved: new Date().toISOString() }; }
+    qPersist(); renderQuotation(); renderCmpData(); },
+  'q-compare': () => { scen.show = true; scenSave(); if (cmpVendors().length < 2) sorted().slice(0, 4).forEach(v => ui.sel.add(v.id)); renderAll(); location.hash = '#compare'; },
   'open-import': () => { ui.modal = { type: 'import' }; renderModal(); },
   'open-scores': () => { ui.modal = { type: 'scores' }; renderModal(); },
   'open-vendor': d => { ui.modal = { type: 'vendor', v: d.v }; renderModal(); },
