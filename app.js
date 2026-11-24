@@ -134,6 +134,8 @@ function scenInfo(vs) { // lowest complete scenario total, only when all selecte
   const all = vs.map(v => ({ v, s: qScen(v) })), ok = all.filter(x => x.s.priced && !x.s.missing), same = new Set(vs.map(v => v.currency)).size === 1;
   return { all, min: same && ok.length > 1 ? Math.min(...ok.map(x => x.s.total)) : null, edited: all.some(x => x.s.edited) };
 }
+// Turn the scenario on and jump to Compare. Scrolls explicitly: setting location.hash to the value it already has does not move the page.
+function goCompare() { scen.show = true; scenSave(); if (cmpVendors().length < 2) sorted().slice(0, 4).forEach(v => ui.sel.add(v.id)); renderAll(); if (location.hash !== '#compare') history.replaceState(null, '', '#compare'); const go = () => $('#compare').scrollIntoView({ block: 'start', behavior: 'instant' }); go(); setTimeout(go, 60); setTimeout(go, 500); /* repeated: previews load and shift the layout */ }
 const scenTitle = () => scen.name.trim() || 'Quotation Planner scenario';
 document.addEventListener('change', e => { if (e.target.id === 'scenShow') { scen.show = e.target.checked; scenSave(); renderCmpData(); } });
 document.addEventListener('input', e => { if (e.target.id === 'scenName') { scen.name = e.target.value.slice(0, 80); scenSave(); if (scen.show) renderCmpData(); } });
@@ -408,8 +410,8 @@ const ACT = {
   'q-apply-all': () => { const v = qSource(), from = qRows(v), others = S.vendors.filter(x => x.id !== v.id);
     if (!confirm(`Copy the scenario quantities of ${v.name} to the other ${others.length} vendors? Each vendor keeps its own unit rates; existing quantity drafts of those vendors are replaced.`)) return;
     for (const o of others) { const rows = clone(qRows(qSrc(o))); for (const r of rows) { const m = from.find(x => x.label === r.label && x.unit === r.unit); if (m && r.unit !== 'lot') r.qty = m.qty; } qDrafts[o.id] = { rows, saved: new Date().toISOString() }; }
-    qPersist(); renderQuotation(); renderCmpData(); },
-  'q-compare': () => { scen.show = true; scenSave(); if (cmpVendors().length < 2) sorted().slice(0, 4).forEach(v => ui.sel.add(v.id)); renderAll(); location.hash = '#compare'; },
+    qPersist(); goCompare(); },
+  'q-compare': () => goCompare(),
   'open-import': () => { ui.modal = { type: 'import' }; renderModal(); },
   'open-scores': () => { ui.modal = { type: 'scores' }; renderModal(); },
   'open-vendor': d => { ui.modal = { type: 'vendor', v: d.v }; renderModal(); },
