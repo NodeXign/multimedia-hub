@@ -219,7 +219,7 @@ function buildPrint() {
   const vs = cmpVendors(), pick = v => { const im = images(v).filter(m => !m.doc), c = im.find(m => m.id === v.cover); return [...(c ? [c] : []), ...im.filter(m => m !== c)].slice(0, 6); };
   const fig = m => `<figure><img src="${esc(src(m))}" alt=""><figcaption>${esc(m.label)} · ${esc(m.source)}</figcaption></figure>`;
   $('#printout').innerHTML = `<h1>${esc((S.project || {}).title || 'Vendor comparison')}</h1><p class="mut">Vendor comparison · ${vs.map(v => esc(v.name)).join(' · ')} · exported ${new Date().toISOString().slice(0, 10)}${(S.project || {}).scope ? '<br>' + esc(S.project.scope) : ''}</p>${$('#cmpWarn').innerHTML}
-    <div class="cmp" style="--n:${vs.length}"><div class="crow head"><div class="lbl"></div>${vs.map(cmpHead).join('')}</div>
+    <div class="cmp" style="--n:${vs.length}"><div class="crow head"><div class="lbl"></div>${vs.map(cmpHead).join('')}</div>${$('#cmpTop').innerHTML}
     <div class="crow media"><div class="lbl">Reference image</div>${vs.map(v => `<div>${pick(v)[0] ? fig(pick(v)[0]) : '<span class="mut">No image</span>'}</div>`).join('')}</div>${$('#cmpData').innerHTML}</div>` +
     vs.map(v => `<div class="ppage"><h2>${esc(v.name)} — reference images</h2><p class="mut">${money(v.price, v.currency)} · Overall score ${scoreLabel(v)}${v.rank ? ' · Recommended #' + v.rank : ''}${v.recNote ? ' · ' + esc(v.recNote) : ''}</p><div class="pgrid">${pick(v).map(fig).join('') || '<span class="mut">No reference images.</span>'}</div></div>`).join('');
   return Promise.all([...$('#printout').querySelectorAll('img')].map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; setTimeout(r, 6000); })));
@@ -271,6 +271,7 @@ function renderCompare() {
   if (vs.length < 2) { el.innerHTML = head + `<div class="empty">Tick <b>Compare</b> on at least two vendor cards, then click <b>Compare Selected</b>.<br><br><button class="btn" data-act="sel-top">Select the first three vendors</button></div>`; return; }
   el.innerHTML = head + `<div class="scenbar"><label><input type="checkbox" id="scenShow" ${scen.show ? 'checked' : ''}> <b>Show Quotation Planner scenario</b></label> <input id="scenName" class="scen-name" type="text" maxlength="80" placeholder="Scenario name, e.g. 4 min multimedia" value="${esc(scen.name)}" aria-label="Scenario name"><a class="btn sm" href="#quotation">Edit quantities in Quotation Planner</a><small class="mut">Adds scenario rows under Price, also in the PDF and Excel export. Published quotations are not changed.</small></div><div id="cmpWarn"></div><div class="cmp-scroll"><div class="cmp" style="--n:${vs.length}">
     <div class="crow head"><div class="lbl"></div>${vs.map(cmpHead).join('')}</div>
+    <div id="cmpTop"></div>
     <div class="crow media"><div class="lbl">Portfolio Preview</div>${vs.map(v => `<div id="cp_${v.id}"></div>`).join('')}</div>
     <div id="cmpData"></div></div></div>`;
   vs.forEach(renderCmpPreview); renderCmpData();
@@ -285,10 +286,7 @@ function renderCmpPreview(v) {
 function scenRows(vs, row, grp) {
   if (!scen.show) return '';
   const si = scenInfo(vs), of = v => si.all.find(x => x.v === v).s, was = (a, b, u) => a === b ? '' : ` <small class="was">was ${qNum(b)}${u}</small>`;
-  return grp(`Scenario · ${esc(scenTitle())} <small>planning estimate: quantity × unit rate, not a vendor quotation</small>`) +
-    row('Scenario total', v => { const s = of(v); if (!s.priced) return '<span class="mut">Not itemised</span>';
-      return `<div class="big num ${si.min != null && !s.missing && s.total === si.min ? 'low' : ''}">${money(s.total, v.currency)}</div>${s.missing ? `<span class="pill warn">Incomplete – ${s.missing} line(s) without a rate</span>` : (si.min != null && s.total === si.min ? '<span class="pill good">Lowest in this scenario</span> ' : '') + (s.delta == null ? '' : s.delta === 0 ? '<span class="pill">Same as quotation</span>' : `<span class="pill ${s.delta < 0 ? 'good' : 'warn'}">${qSigned(s.delta, v.currency)} vs quotation${v.price ? ' · ' + (s.delta > 0 ? '+' : '−') + fx1(Math.abs(s.delta / v.price * 100)) + '%' : ''}</span>`)}`; }) +
-    row('Scenario quantities', v => { const s = of(v), ls = s.lines.filter(l => l.qty !== 0 || l.changed); if (!s.priced) return '<span class="mut">—</span>';
+  return row('Scenario quantities', v => { const s = of(v), ls = s.lines.filter(l => l.qty !== 0 || l.changed); if (!s.priced) return '<span class="mut">—</span>';
       return `<ul class="items num">${ls.map(l => `<li class="${l.changed ? 'chg' : ''}"><span>${esc(l.label)} · ${qNum(l.qty)} ${esc(l.unit)}${was(l.qty, l.bQty, '')} × ${l.rate == null ? 'no rate' : qNum(l.rate)}${l.rate == null ? '' : was(l.rate, l.bRate, '')}</span><span>${l.line == null ? 'Pending' : money(l.line)}</span></li>`).join('')}</ul>`; }) +
     (scenAligned(vs) ? '' : `<div class="crow"><div class="lbl"></div><div style="grid-column:2/-1"><span class="pill warn">Quantities differ between these vendors</span> <span class="mut">Totals are not like-for-like. In Quotation Planner, click “Apply quantities to all vendors”.</span></div></div>`) +
     (si.edited ? '' : `<div class="crow"><div class="lbl"></div><div style="grid-column:2/-1"><span class="mut">No planner changes yet for these vendors – scenario totals equal the itemised quotations. Change quantities in Quotation Planner, then use “Apply quantities to all vendors”.</span></div></div>`);
@@ -298,14 +296,20 @@ function renderCmpData() {
   const pi = priceInfo(vs), rk = ranked(), row = (l, f, cls = '') => `<div class="crow ${cls}"><div class="lbl">${l}</div>${vs.map(v => `<div class="${v.rank === 1 ? 'best' : ''}">${f(v)}</div>`).join('')}</div>`;
   const grp = l => `<div class="crow grp"><div class="lbl">${l}</div></div>`, ns = '<span class="mut">Not stated</span>';
   $('#cmpWarn').innerHTML = (pi.same ? '' : '<div class="note" style="margin:0 0 12px"><b>Mixed currencies.</b> Prices are not converted without a verified exchange rate, so no lowest price is highlighted.</div>');
-  box.innerHTML = grp('Price') +
-    row('Total Quotation', v => `<div class="big num ${pi.same && v.price === pi.min ? 'low' : ''}">${money(v.price, v.currency)}</div>${pi.same && v.price === pi.min ? '<span class="pill good">Lowest quoted price</span>' : ''}`) +
-    row('Discount', v => { const d = disc(v); return d ? `<span class="num">Before discount <s>${money(v.gross, v.currency)}</s> → now <b>${money(v.price, v.currency)}</b></span><br><span class="pill good">Reduced by ${money(d.amt, v.currency)} · ${fx1(d.pct)}% off</span>` : '<span class="mut">No discount stated</span>'; }) +
+  const si = scen.show ? scenInfo(vs) : null, sOf = v => si.all.find(x => x.v === v).s;
+  const price = v => { // scenario on: the scenario price replaces the quoted total
+    if (!si) return `<div class="big num ${pi.same && v.price === pi.min ? 'low' : ''}">${money(v.price, v.currency)}</div>${pi.same && v.price === pi.min ? '<span class="pill good">Lowest quoted price</span>' : ''}`;
+    const s = sOf(v); if (!s.priced) return `<div class="big num">${money(v.price, v.currency)}</div><span class="pill">Quotation – not itemised</span>`;
+    const low = si.min != null && !s.missing && s.total === si.min;
+    return `<div class="big num ${low ? 'low' : ''}">${money(s.total, v.currency)}</div>${s.missing ? `<span class="pill warn">Incomplete – ${s.missing} line(s) without a rate</span>` : (low ? '<span class="pill good">Lowest price</span> ' : '') + (s.delta ? `<span class="pill ${s.delta < 0 ? 'good' : 'warn'}">${qSigned(s.delta, v.currency)} vs quotation ${money(v.price, v.currency)}</span>` : '')}`; };
+  const score = v => `<div class="big">${scoreLabel(v)}</div>${rk.includes(v.id) ? `<small>Rank ${rk.indexOf(v.id) + 1} of ${rk.length} rated vendors</small>` : ''}${groups().length > 1 && overall(v).score != null ? `<div class="gchips">${groups().map(g => { const r = gScore(v, g); return `<span><b class="num">${r.score == null ? '–' : fx1(r.score)}</b> / ${r.w}<small>${esc(g.name.replace(/^([A-Z])[\s.·:–-]+/, '$1 · '))}</small></span>`; }).join('')}</div>` : ''}`;
+  const discount = v => { const d = disc(v); return d ? `<span class="num">Initial quotation <s>${money(v.gross, v.currency)}</s> → current quotation <b>${money(v.price, v.currency)}</b></span><br><span class="pill good">Reduced by ${money(d.amt, v.currency)} · ${fx1(d.pct)}% off</span>` : '<span class="mut">No discount stated</span>'; };
+  $('#cmpTop').innerHTML = grp('Summary' + (si ? ` · ${esc(scenTitle())} <small>price = scenario quantities × each vendor’s quoted unit rates</small>` : '')) + row('<b>Overall Score</b>', score) + row(si ? '<b>Price</b><br><small>' + esc(scenTitle()) + '</small>' : '<b>Total Quotation</b>', price) + row('Discount', discount);
+  box.innerHTML = grp('Price details') +
     scenRows(vs, row, grp) +
     row('Quote document total', v => v.docTotal != null ? `<span class="num">${money(v.docTotal, v.origCurrency)}</span><br><small>${esc(v.source || '')}</small>` : `<span class="mut">—</span>${v.source ? '<br><small>' + esc(v.source) + '</small>' : ''}`) +
     row('Deliverables', v => esc(v.deliverables) || ns) +
     row('Unit Price', v => v.items && v.items.length ? `<ul class="items num">${v.items.map(it => `<li><span>${esc(it.label)}</span><span>${money(it.unit, v.currency)}${it.unitOrig != null && v.origCurrency && v.origCurrency !== v.currency ? ` <small>(${money(it.unitOrig, v.origCurrency)})</small>` : ''}</span></li>`).join('')}<li><span>Modelling</span><span>${typeof v.modelling === 'number' ? money(v.modelling, v.currency) : esc(v.modelling ?? '—')}</span></li></ul>` : '<span class="mut">Not itemised</span>') +
-    row('Scope caveats', v => esc(v.caveats) || '<span class="mut">None noted</span>') +
     grp('Key notes') + row('Reviewer assessment', v => kn(v)) +
     grp('Delivery') + row('Timeline', v => esc(v.timeline) || ns) + row('Revision Rounds', v => esc(v.revisions) || ns) +
     row('Prepayment', v => v.prepay == null ? ns : typeof v.prepay === 'number' ? Math.round(v.prepay * 100) + '%' : esc(v.prepay)) + row('Quotation terms', v => `<small>${esc(v.notes)}</small>`) +
@@ -490,3 +494,5 @@ document.addEventListener('change', async e => {
   webify(); renderAll();
   if (q.get('print') && pre.length > 1) buildPrint();
 })();
+// Hide the floating selection bar while Compare is on screen, so it never sits on top of a screenshot of the table.
+if ('IntersectionObserver' in window) new IntersectionObserver(es => { const b = $('#selbar'); if (b) b.style.display = es[0].isIntersecting && es[0].intersectionRect.height > innerHeight * 0.5 ? 'none' : ''; }, { threshold: [0, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1] }).observe($('#compare'));
