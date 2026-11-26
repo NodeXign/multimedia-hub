@@ -8,8 +8,13 @@ const PUB = path.resolve(__dirname, '..', 'public');
 const WORKBOOK = process.argv[2] || path.join(ROOT, 'Ghana Rendering Quotation_Updated.xlsx');
 // Shared planner baseline: merge a vendor entry exported by Quotation Planner here.
 // Quantities/rates for video use seconds. Source workbook data is never changed.
+// Comparison basis for every vendor (reviewer, 2026-11-26): Hansinok's final quotation scope – 270 s multimedia + 30 s animation, stills unchanged.
+// Each vendor's price is its own quoted unit rates × these quantities.
+const BASIS = { multimediaSec: 270, animationSec: 30 };
+// Reviewer's rating of each vendor's reference videos, shown in Video Preview (vendors not listed: Medium).
+const VIDEO_QUALITY = { Hansinok: 'High', ICON: 'High', 'Silkroad Visual': 'Low' };
+const DEFAULT_COMPARE = ['Hansinok', 'AIP Studioworks', 'ICON'];
 const QUOTATION_DEFAULTS = {
-  Hansinok: { items: { item3: { qty: 285, rate: 20 } } }, // formal update: 285 s @ S$20/s
 };
 // Refresh planner constants without rebuilding media (Windows does not provide sips).
 if (process.argv.includes('--planner-only')) {
@@ -71,10 +76,10 @@ const VIDEO_IDS = {
 // Quotation updates received after the workbook was last saved (the workbook itself is not modified).
 const OVERRIDES = {
   Hansinok: {
-    set: { quote: '2026-11-20 · Formal (updated quotation)', price: 30025, totalEx: 26800, anim15: 3225, docTotal: 30025, discount: 1 - 30025 / 51435,
-      source: 'Hansinok Quotation Update 2026-11-20 (formal, SGD; modelling US$50/building excl.)',
+    set: { quote: '2026-11-24 · Formal (final quotation)', price: 30025, totalEx: 26800, anim15: 3225, docTotal: 32950, discount: 1 - 30025 / 51435,
+      source: 'Hansinok final quotation S$32,950 (formal, SGD; modelling US$50/building excl.)',
       notes: 'SGD, tax excl.; updated formal quote S$30,025 dated 20 Nov 2026 (supersedes S$34,300 of 19 Nov and the initial S$51,435 WeChat quote); 285 s multimedia @ S$20/s; 15 s animation @ S$215/s; modelling excluded – US$50/building, TBC; 50% advance; timeline Dec 2026–Jan 2027; animation: 1 demo + 3 rounds of static-frame revisions. FINAL QUOTATION (signed and sealed by Hansinok, file “Quotation Update for Africa Masterplan Project(2).pdf”): S$32,950 = 270 s multimedia @ S$20 + 30 s animation @ S$215 + 2 master aerial @ S$2,600 + 6 key-area aerial @ S$2,100 + 3 eye-level @ S$1,100; same unit rates as the 20 Nov quote; clause 6: major model / camera / time-of-day changes after first drafts are charged by proportion of affected images, quoted for SJ’s written approval first; clause 8: untextured 3ds Max model + PSD files on full payment, editable source files at extra cost; clause 9: revisions requested Feb–May 2027 are charged separately, quoted before work starts' },
-    units: [[/Node/, 2100], [/Animation/, 215]],
+    units: [[/Node/, 2100], [/Animation/, 215], [/Multimedia/, 1200]],
   },
 };
 // Recommended display order (reviewer's call, editable in the app) and the three scoring categories.
@@ -83,7 +88,7 @@ const GROUPS = [['g1', 'A · Multimedia production quality (storyline & multimed
 // Reviewer's scores per criterion (points, criteria 1–8 in workbook order), reviewer's final adjustment of 2026-11-26 for Hansinok, AIP Studioworks and ICON (category totals A/B/C as reviewed; split within a category is proportional); others from the comparison exported on 2026-11-20.
 // The export only carries criterion totals, so each total is spread over the sub-items in proportion to their max (0.5 steps).
 const REVIEW = { date: '2026-11-26', scores: {
-  Hansinok: [19, 9.5, 12, 14, 10, 9, 5, 8.5], 'AIP Studioworks': [16, 8, 13.5, 10, 3, 8.5, 5, 7],
+  Hansinok: [19, 9, 12, 13, 9, 10, 5, 10], 'AIP Studioworks': [16, 8, 13.5, 10, 3, 8.5, 5, 7],
   Willmore: [15.5, 7, 6, 7.5, 7, 7.5, 4.5, 8], 'SNT Visual': [8.5, 4.5, 5, 5.5, 3, 5, 4, 9],
   ICON: [19.5, 9, 13.5, 15, 9, 7.5, 4.5, 2] } };
 // Delivery wording shown in Compare (reviewer's summary; the detailed terms stay in each vendor's Quotation terms record).
@@ -220,6 +225,13 @@ const url = f => '/files/' + path.relative(ROOT, f).split(path.sep).map(encodeUR
     }
   }
   for (const [name, o] of Object.entries(OVERRIDES)) { const v = st.vendors.find(x => P.sameVendor(x.name, name)); if (!v) continue; Object.assign(v, o.set); for (const [re, u] of o.units) for (const it of v.items) if (re.test(it.label)) it.unit = it.unitOrig = u; v.updated = true; }
+  for (const v of st.vendors) { // re-price every itemised vendor on the common basis
+    if (!v.items || !v.items.length || v.price == null) continue;
+    for (const it of v.items) { if (/Multimedia/i.test(it.label)) it.qty = BASIS.multimediaSec / (/\/min/i.test(it.label) ? 60 : 1); if (/Animation/i.test(it.label)) it.qty = BASIS.animationSec / (/\/min/i.test(it.label) ? 60 : 1); }
+    const r2 = n => Math.round(n * 100) / 100, line = it => r2(it.qty * it.unit), anim = v.items.filter(it => /Animation/i.test(it.label)).reduce((a, it) => a + line(it), 0);
+    v.price = r2(v.items.reduce((a, it) => a + line(it), 0) + (typeof v.modelling === 'number' ? v.modelling : 0)); v.anim15 = anim; v.totalEx = r2(v.price - anim); if (v.gross != null && !v.discount) v.gross = v.price;
+    v.deliverables = v.items.map(it => /\/(min|sec)/i.test(it.label) ? `${it.qty * (/\/min/i.test(it.label) ? 60 : 1)} s ${it.label.replace(/\s*\/.*$/, '')}` : `${it.qty} × ${it.label.replace(/\s*\/.*$/, '')}`).join(' · ');
+  }
   const low = Math.min(...st.vendors.filter(v => v.price != null).map(v => v.price)), ps = st.criteria.flatMap(c => c.subs).find(s => /evaluated price/i.test(s.name));
   for (const v of st.vendors) { if (v.price == null) continue; v.vsLowest = v.price / low - 1; if (v.updated && ps) { const r = v.price / low; (st.scores[v.id] = st.scores[v.id] || {})[ps.id] = ps.max * (r <= 1.1 ? 1 : r <= 1.3 ? 0.5 : r <= 1.5 ? 0.3 : 0); ps.rationale = (ps.rationale || '') + ` Updated ${st.vendors.find(x => x === v).quote.slice(0, 10)}: ${v.name} ${v.currency} ${v.price.toLocaleString('en-SG')} = ${Math.round(r * 100)}% of the lowest quote.`; } delete v.updated; }
   for (const [name, pts] of Object.entries(REVIEW.scores)) { const v = st.vendors.find(x => P.sameVendor(x.name, name)); if (!v) { console.warn('review: vendor not found', name); continue; } st.criteria.forEach((c, i) => spread(pts[i], c.subs).forEach((x, k) => { (st.scores[v.id] = st.scores[v.id] || {})[c.subs[k].id] = x; })); }
@@ -229,7 +241,8 @@ const url = f => '/files/' + path.relative(ROOT, f).split(path.sep).map(encodeUR
   for (const [name, [rank, note]] of Object.entries(RANKS)) { const v = st.vendors.find(x => P.sameVendor(x.name, name)); if (v) { v.rank = rank; v.recNote = note; } }
   st.groups = GROUPS.map(g => ({ id: g[0], name: g[1] })); st.criteria.forEach((c, i) => { c.group = (GROUPS.find(g => g[2].includes(i)) || GROUPS[2])[0]; });
   st.vendors.forEach(v => { const c = v.media.find(m => m.kind === 'image' && !m.doc); v.cover = c ? c.id : null; });
-  st.quotationDefaults = QUOTATION_DEFAULTS;
+  for (const v of st.vendors) { const k = Object.keys(VIDEO_QUALITY).find(n => P.sameVendor(v.name, n) || v.name.startsWith(n)); v.videoQuality = k ? VIDEO_QUALITY[k] : 'Medium'; }
+  st.quotationDefaults = QUOTATION_DEFAULTS; st.defaultCompare = DEFAULT_COMPARE.map(n => (st.vendors.find(x => P.sameVendor(x.name, n)) || {}).id).filter(Boolean);
   st.source = { workbook: path.basename(WORKBOOK), built: new Date().toISOString().slice(0, 10), rev: Date.now() };
   fs.writeFileSync(path.join(PUB, 'data', 'seed.js'), 'window.SEED=' + JSON.stringify(st) + ';\n');
   console.log(st.vendors.map(v => `${v.name}: ${v.currency} ${v.price} | img ${v.media.filter(m => m.kind === 'image').length} vid ${v.media.filter(m => m.kind === 'video' || m.kind === 'embed').length} link ${v.media.filter(m => m.kind === 'link').length}`).join('\n'));

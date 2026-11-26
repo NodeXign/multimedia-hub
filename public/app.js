@@ -204,14 +204,15 @@ function renderGallery() {
 }
 
 function vidsOf(v) { return v.media.filter(m => m.kind === 'video' || m.kind === 'embed' || m.kind === 'ext'); }
+const vq = v => v.videoQuality ? `<span class="pill vq ${v.videoQuality === 'High' ? 'good' : v.videoQuality === 'Low' ? 'warn' : ''}">${esc(v.videoQuality)} quality</span>` : '';
 function renderVideos() {
   const vs = sorted().filter(v => vidsOf(v).length), el = $('#videos'); if (!el) return;
   if (!vs.length) { el.innerHTML = ''; return; }
   const v = vs.find(x => x.id === ui.vv) || vs[0], list = vidsOf(v), m = list.find(x => x.id === ui.vm) || list[0];
   el.innerHTML = `<div class="sec-head"><div><h2>Video Preview</h2><p class="lead">Watch each vendor's reference videos here without leaving the page.${LOCAL ? '' : ' OneDrive videos play when this browser is signed in to the organisation’s Microsoft 365.'}</p></div></div>
-    <div class="vtabs">${vs.map(x => `<button class="btn ${x.id === v.id ? 'primary' : ''}" data-act="vv" data-v="${x.id}">${esc(x.name)} <small>${vidsOf(x).length}</small></button>`).join('')}</div>
+    <div class="vtabs">${vs.map(x => `<button class="btn ${x.id === v.id ? 'primary' : ''}" data-act="vv" data-v="${x.id}">${esc(x.name)} <small>${vidsOf(x).length}</small> ${vq(x)}</button>`).join('')}</div>
     <div class="vwrap"><div><div class="pv">${player(m)}</div>
-      <div class="rowf" style="justify-content:space-between;margin-top:8px"><span><b>${esc(m.label)}</b> <small>· ${esc(m.source)}</small></span><span class="rowf">${m.link ? `<a class="btn sm" href="${esc(m.link)}" target="_blank" rel="noopener">Open on OneDrive ↗</a>` : ''}<button class="btn sm" data-act="lb" data-v="${v.id}" data-m="${m.id}">Full screen</button></span></div></div>
+      <div class="rowf" style="justify-content:space-between;margin-top:8px"><span><b>${esc(m.label)}</b> <small>· ${esc(m.source)}</small> ${vq(v)}</span><span class="rowf">${m.link ? `<a class="btn sm" href="${esc(m.link)}" target="_blank" rel="noopener">Open on OneDrive ↗</a>` : ''}<button class="btn sm" data-act="lb" data-v="${v.id}" data-m="${m.id}">Full screen</button></span></div></div>
       <div class="vlist">${list.map((x, k) => `<button class="${x.id === m.id ? 'on' : ''}" data-act="vm" data-m="${x.id}"><span class="num">${k + 1}</span>${esc(x.label)}</button>`).join('')}</div></div>`;
 }
 // Printable export: the comparison table as shown, then one page of reference images per vendor.
@@ -264,8 +265,12 @@ function exportXlsx() {
   sh('Vendor directory', [['Company', 'Vendor (short name)', 'Location', 'Contact person', 'Email', 'WeChat / other', 'Key notes', 'Quotation', 'Currency', 'Price', 'Overall score'], ...S.vendors.map(v => [v.company || v.name, v.name, v.location || '', v.contact || '', v.email || '', v.wechat || '', knList(v).map(x => '• ' + x).join('\n'), v.quote || '', v.currency || '', v.price ?? '', n1(overall(v).score)])], [30, 24, 18, 22, 28, 24, 90, 30, 9, 11, 12]);
   XLSX.writeFile(wb, `Ghana-vendor-comparison-${new Date().toISOString().slice(0, 10)}.xlsx`); return { R, A, M, SC };
 }
+// Compare selection: remembered per browser; first visit (or nothing selected) opens on the project's default vendors.
+const SELKEY = 'mmhub.sel.v1', selDefault = () => new Set(((window.SEED || {}).defaultCompare || []).filter(id => vById(id)));
+function selLoad() { try { const a = JSON.parse(localStorage.getItem(SELKEY) || '[]').filter(id => vById(id)); if (a.length) return new Set(a.slice(0, 4)); } catch (_) {} return selDefault(); }
+const selSave = () => { try { localStorage.setItem(SELKEY, JSON.stringify([...ui.sel])); } catch (_) {} };
 function cmpVendors() { return S.vendors.filter(v => ui.sel.has(v.id)).slice(0, 4).sort((a, b) => (a.rank || 99) - (b.rank || 99)); } // recommended vendors first
-function renderCompare() {
+function renderCompare() { selSave();
   const vs = cmpVendors(), el = $('#compare');
   const head = `<div class="sec-head"><div><h2>Compare Vendors</h2><p class="lead">Select 2–4 vendors in the gallery. Previews are 16:9, never cropped.</p></div><div class="rowf"><button class="btn primary" data-act="export-pdf" ${vs.length < 2 ? 'disabled' : ''} title="Opens the print dialog – choose “Save as PDF”">Export PDF</button><button class="btn primary" data-act="export-xlsx" title="Comparison, all scores and media list as an Excel workbook">Export Excel</button><button class="btn" data-act="open-scores">Edit Scores &amp; Weights</button><a class="btn" href="#gallery">← Back to Gallery</a></div></div>`;
   if (vs.length < 2) { el.innerHTML = head + `<div class="empty">Tick <b>Compare</b> on at least two vendor cards, then click <b>Compare Selected</b>.<br><br><button class="btn" data-act="sel-top">Select the first three vendors</button></div>`; return; }
@@ -447,7 +452,7 @@ const ACT = {
   rm: async d => { const v = vById(d.v); if (!confirm('Remove this item from the dashboard? The original file is not deleted.')) return; v.media = v.media.filter(m => m.id !== d.m); if (v.cover === d.m) v.cover = (images(v)[0] || {}).id || null; save(); await gc(); renderAll(); },
   'add-url': d => { if (addUrl(vById(d.v), $('#newUrl').value)) renderAll(); },
   'imp-url': () => { if (addUrl(vById($('#impV').value), $('#impUrl').value)) { renderAll(); $('#impMsg').textContent = 'Link added.'; } },
-  reset: async () => { if (!confirm('Discard all local edits, scores and imported media, and reload the project data?')) return; localStorage.removeItem(LS); S = clone(window.SEED || DEMO()); ui.sel = new Set(); ui.idx = {}; ui.cidx = {}; await gc(); renderAll(); },
+  reset: async () => { if (!confirm('Discard all local edits, scores and imported media, and reload the project data?')) return; localStorage.removeItem(LS); S = clone(window.SEED || DEMO()); ui.sel = selDefault(); ui.idx = {}; ui.cidx = {}; await gc(); renderAll(); },
 };
 document.addEventListener('click', e => { const t = e.target.closest('[data-act]'); if (!t || t.tagName === 'SELECT' || t.type === 'checkbox') return; const f = ACT[t.dataset.act]; if (f) f(t.dataset, e); });
 document.addEventListener('focusin', e => { const t = e.target; if (t.matches && t.matches('input.sc, input.wt')) t.select(); }); // typing replaces the old value instead of appending to it
@@ -487,10 +492,10 @@ document.addEventListener('change', async e => {
     for (const sv of window.SEED.vendors) { const v = S.vendors.find(x => x.id === sv.id); if (!v) { S.vendors.push(clone(sv)); S.scores[sv.id] = clone(window.SEED.scores[sv.id] || {}); continue; } v.media = [...clone(sv.media), ...v.media.filter(mine)]; if (!v.media.some(m => m.id === v.cover)) v.cover = sv.cover; }
     S.source = clone(window.SEED.source); save();
   }
-  if (window.SEED && !S.importedFrom) for (const sv of window.SEED.vendors) { const v = S.vendors.find(x => x.id === sv.id); if (v) for (const k of ['keynotes', 'company', 'location', 'contact', 'email', 'wechat']) if (v[k] === undefined) v[k] = sv[k]; } // fields added after this browser saved its state
+  if (window.SEED && !S.importedFrom) for (const sv of window.SEED.vendors) { const v = S.vendors.find(x => x.id === sv.id); if (v) for (const k of ['videoQuality', 'keynotes', 'company', 'location', 'contact', 'email', 'wechat']) if (v[k] === undefined) v[k] = sv[k]; } // fields added after this browser saved its state
   try { const need = new Set(allMedia().map(m => m.blobId).filter(Boolean)); for (const k of need) { const b = await blobGet(k); if (b) blobUrls[k] = URL.createObjectURL(b); } } catch (e) { console.warn('IndexedDB unavailable', e); }
   const q = new URLSearchParams(location.search), pre = (q.get('compare') || '').split(',').filter(id => vById(id)); // ?compare=id,id preselects vendors
-  if (pre.length) ui.sel = new Set(pre.slice(0, 4));
+  if (pre.length) ui.sel = new Set(pre.slice(0, 4)); else ui.sel = selLoad();
   webify(); renderAll();
   if (q.get('print') && pre.length > 1) buildPrint();
 })();
