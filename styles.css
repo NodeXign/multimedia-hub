@@ -98,7 +98,7 @@ table.dir td,table.dir th{padding:12px 14px}table.dir thead th{font-size:12.5px}
 /* printable comparison export */
 #printout{display:none}
 @media print{
-@page{size:A4 landscape;margin:15mm}
+@page{size:A4 landscape;margin:10mm}
 *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 body{background:#fff;font-size:11px;overflow:visible!important}body>*:not(#printout){display:none!important}
 #printout{display:block}#printout h1{font-size:20px}#printout h2{font-size:17px}#printout h3{font-size:13px}#printout p{margin:4px 0 10px}

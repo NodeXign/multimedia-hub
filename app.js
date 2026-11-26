@@ -5,7 +5,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 const clone = o => JSON.parse(JSON.stringify(o));
 const money = (n, cur) => n == null ? '—' : `${cur ? cur + ' ' : ''}${Number(n).toLocaleString('en-SG', { maximumFractionDigits: 2 })}`;
 const fx1 = n => (Math.round(n * 10) / 10).toLocaleString('en-SG');
-let S, ui = { sel: new Set(), sort: 'rec', dir: 'asc', modal: null, lb: null, idx: {}, cidx: {} };
+let S, ui = { sel: new Set(), sort: 'score', dir: 'desc', modal: null, lb: null, idx: {}, cidx: {} };
 const blobUrls = {};
 const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 // Online build: files under /files/ exist only on the local server -> use hosted copies or the OneDrive link.
@@ -165,6 +165,7 @@ function renderOverview() {
   $('#foot').innerHTML = `Local-first: data and media stay on this computer (browser storage + local files). ${S.source ? 'Seed built from “' + esc(S.source.workbook) + '” on ' + esc(S.source.built) + '.' : ''} ${S.importedFrom ? 'Last Excel import: “' + esc(S.importedFrom) + '”.' : ''}`;
 }
 
+function scoreOrder(a, b) { const x = overall(a).score, y = overall(b).score; return (x == null) - (y == null) || (y ?? 0) - (x ?? 0) || a.name.localeCompare(b.name); }
 function sorted() {
   const a = [...S.vendors];
   const key = { rec: v => v.rank || null, price: v => v.price, score: v => overall(v).score, name: v => v.name.toLowerCase(), workbook: v => S.vendors.indexOf(v) }[ui.sort], d = ui.dir === 'desc' ? -1 : 1;
@@ -217,7 +218,7 @@ function renderVideos() {
 }
 // Printable export: the comparison table as shown, then one page of reference images per vendor.
 function buildPrint() {
-  const vs = cmpVendors(), pick = v => { const im = images(v).filter(m => !m.doc), c = im.find(m => m.id === v.cover); return [...(c ? [c] : []), ...im.filter(m => m !== c)].slice(0, 6); };
+  const vs = cmpVendors(), pick = v => { const im = images(v).filter(m => !m.doc), selected = im.filter(m => m.featured), c = im.find(m => m.id === v.cover); return selected.length ? selected : [...(c ? [c] : []), ...im.filter(m => m !== c)].slice(0, 6); };
   const fig = m => `<figure><img src="${esc(src(m))}" alt=""><figcaption>${esc(m.label)} · ${esc(m.source)}</figcaption></figure>`;
   $('#printout').innerHTML = `<h1>${esc((S.project || {}).title || 'Vendor comparison')}</h1><p class="mut">Vendor comparison · ${vs.map(v => esc(v.name)).join(' · ')} · exported ${new Date().toISOString().slice(0, 10)}${(S.project || {}).scope ? '<br>' + esc(S.project.scope) : ''}</p>${$('#cmpWarn').innerHTML}
     <div class="cmp" style="--n:${vs.length}"><div class="crow head"><div class="lbl"></div>${vs.map(cmpHead).join('')}</div>${$('#cmpTop').innerHTML}
@@ -240,7 +241,7 @@ const recPill = v => v.rank === 1 ? '<span class="pill best">★ Best-suit recom
 const disc = v => v.gross != null && v.price != null && v.gross > v.price ? { amt: v.gross - v.price, pct: (1 - v.price / v.gross) * 100 } : null;
 const cmpHead = v => `<div class="${v.rank === 1 ? 'best' : ''}"><h3>${esc(v.name)}</h3><small>${esc(v.quote)}</small><div class="rowf" style="margin-top:6px">${recPill(v)}${v.recNote ? `<span class="pill warn">${esc(v.recNote)}</span>` : ''}</div></div>`;
 function exportXlsx() {
-  const vs = cmpVendors().length >= 2 ? cmpVendors() : S.vendors, pi = priceInfo(vs), rk = ranked(), R = [], row = (l, f) => R.push([l, ...vs.map(f)]), n1 = x => x == null ? '' : Math.round(x * 100) / 100;
+  const vs = cmpVendors().length >= 2 ? cmpVendors() : [...S.vendors].sort(scoreOrder), pi = priceInfo(vs), rk = ranked(), R = [], row = (l, f) => R.push([l, ...vs.map(f)]), n1 = x => x == null ? '' : Math.round(x * 100) / 100;
   R.push([(S.project || {}).title || 'Vendor comparison']); R.push(['Exported', new Date().toISOString().slice(0, 10)]); R.push([]); R.push(['', ...vs.map(v => v.name)]);
   row('Recommendation', v => v.rank === 1 ? 'Best-suit recommendation' : v.rank ? 'Recommended #' + v.rank : ''); row('Recommendation note', v => v.recNote || ''); row('Quotation', v => v.quote || '');
   row('Currency', v => v.currency || ''); row('Total quotation', v => v.price ?? ''); row('Before discount', v => disc(v) ? v.gross : ''); row('Discount amount', v => disc(v) ? n1(disc(v).amt) : ''); row('Discount %', v => disc(v) ? n1(disc(v).pct) : '');
@@ -269,7 +270,7 @@ function exportXlsx() {
 const SELKEY = 'mmhub.sel.v1', selDefault = () => new Set(((window.SEED || {}).defaultCompare || []).filter(id => vById(id)));
 function selLoad() { try { const a = JSON.parse(localStorage.getItem(SELKEY) || '[]').filter(id => vById(id)); if (a.length) return new Set(a.slice(0, 4)); } catch (_) {} return selDefault(); }
 const selSave = () => { try { localStorage.setItem(SELKEY, JSON.stringify([...ui.sel])); } catch (_) {} };
-function cmpVendors() { return S.vendors.filter(v => ui.sel.has(v.id)).slice(0, 4).sort((a, b) => (a.rank || 99) - (b.rank || 99)); } // recommended vendors first
+function cmpVendors() { return S.vendors.filter(v => ui.sel.has(v.id)).slice(0, 4).sort(scoreOrder); } // highest score first
 function renderCompare() { selSave();
   const vs = cmpVendors(), el = $('#compare');
   const head = `<div class="sec-head"><div><h2>Compare Vendors</h2><p class="lead">Select 2–4 vendors in the gallery. Previews are 16:9, never cropped.</p></div><div class="rowf"><button class="btn primary" data-act="export-pdf" ${vs.length < 2 ? 'disabled' : ''} title="Opens the print dialog – choose “Save as PDF”">Export PDF</button><button class="btn primary" data-act="export-xlsx" title="Comparison, all scores and media list as an Excel workbook">Export Excel</button><button class="btn" data-act="open-scores">Edit Scores &amp; Weights</button><a class="btn" href="#gallery">← Back to Gallery</a></div></div>`;
@@ -434,7 +435,7 @@ const ACT = {
   close: () => { ui.modal = null; renderAll(); },
   'export-pdf': async () => { if (cmpVendors().length < 2) return; await buildPrint(); window.print(); },
   'export-xlsx': () => { exportXlsx(); },
-  dir: () => { ui.dir = ui.dir === 'asc' ? 'desc' : 'asc'; renderGallery(); renderVideos(); },
+  dir: () => { ui.dir = ui.dir === 'asc' ? 'desc' : 'asc'; renderGallery(); renderVideos(); renderDirectory(); },
   vv: d => { ui.vv = d.v; ui.vm = null; renderVideos(); },
   vm: d => { ui.vm = d.m; renderVideos(); },
   'add-vendor': () => { const id = 'n' + Date.now().toString(36); S.vendors.push({ id, name: 'New vendor', quote: 'Added manually', currency: (S.project || {}).currency || 'SGD', price: null, items: [], notes: '', timeline: '', revisions: '', caveats: '', deliverables: '', media: [], cover: null }); S.scores[id] = {}; save(); ui.modal = { type: 'vendor', v: id }; renderAll(); },
@@ -468,7 +469,7 @@ document.addEventListener('input', e => {
 document.addEventListener('change', async e => {
   const t = e.target;
   try {
-    if (t.dataset.act === 'sort') { ui.sort = t.value; renderGallery(); renderVideos(); }
+    if (t.dataset.act === 'sort') { ui.sort = t.value; ui.dir = t.value === 'score' ? 'desc' : 'asc'; renderGallery(); renderVideos(); renderDirectory(); }
     else if (t.dataset.g) { S.criteria.find(c => c.id === t.dataset.g).group = t.value; save(); renderModal(); refreshData(); }
     else if (t.dataset.ml) { const m = mById(t.dataset.ml); if (m && t.value.trim()) { m.label = t.value.trim(); save(); renderGallery(); renderVideos(); renderCompare(); } }
     else if (t.dataset.act === 'sel') { t.checked ? ui.sel.add(t.dataset.v) : ui.sel.delete(t.dataset.v); renderGallery(); renderCompare(); }
@@ -493,6 +494,7 @@ document.addEventListener('change', async e => {
     S.source = clone(window.SEED.source); save();
   }
   if (window.SEED && !S.importedFrom) for (const sv of window.SEED.vendors) { const v = S.vendors.find(x => x.id === sv.id); if (v) for (const k of ['videoQuality', 'keynotes', 'company', 'location', 'contact', 'email', 'wechat']) if (v[k] === undefined) v[k] = sv[k]; } // fields added after this browser saved its state
+  if (window.SEED && !S.importedFrom) for (const sv of window.SEED.vendors) { const v = vById(sv.id); if (v && sv.featuredRevision && v.featuredRevision !== sv.featuredRevision) { v.cover = sv.cover; v.featuredRevision = sv.featuredRevision; save(); } }
   // Migrate only the exact superseded copy; keep custom notes, scores, prices and planner drafts.
   if (window.SEED?.textCorrections && !S.importedFrom) {
     const c = window.SEED.textCorrections;
