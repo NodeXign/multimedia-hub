@@ -11,6 +11,34 @@ const WORKBOOK = process.argv[2] || path.join(ROOT, 'Ghana Rendering Quotation_U
 // Comparison basis for every vendor (reviewer, 2026-11-26): Hansinok's final quotation scope – 270 s multimedia + 30 s animation, stills unchanged.
 // Each vendor's price is its own quoted unit rates × these quantities.
 const BASIS = { multimediaSec: 270, animationSec: 30 };
+// Reviewer-selected large-scale portfolio images, in the order supplied on 2026-11-26.
+const HANSINOK_FEATURED = ['大尺度区域规划参考案例/20-6.jpg', '大尺度区域规划参考案例/32.jpg', '大尺度区域规划参考案例/35.jpg', '大尺度区域规划参考案例/15.jpg', '大尺度区域规划参考案例/20.jpg', '大尺度区域规划参考案例/20-3.jpg', 'Exteriors(2)/0 (227).jpg', 'Exteriors(2)/0 (361).jpg'];
+function syncFeaturedImages(state) {
+  const v = state.vendors.find(v => v.name === 'Hansinok');
+  if (!v) throw new Error('Hansinok not found');
+  const outDir = path.join(PUB, 'media', 'featured'); fs.mkdirSync(outDir, { recursive: true });
+  const featured = HANSINOK_FEATURED.map((name, i) => {
+    if (/保密/.test(name)) throw new Error('Confidential image excluded');
+    const rel = 'Hansinok 参考资料 261012/' + name, input = process.env.MMHUB_FEATURED_ROOT ? path.join(process.env.MMHUB_FEATURED_ROOT, path.basename(name)) : path.join(ROOT, rel);
+    const web = `media/featured/hansinok-${String(i + 1).padStart(2, '0')}.jpg`, output = path.join(PUB, web);
+    if (process.env.MMHUB_PYTHON || process.platform !== 'darwin') {
+      // MMHUB_PYTHON can point to the bundled Windows Python with Pillow.
+      execFileSync(process.env.MMHUB_PYTHON || 'python3', ['-c', 'from PIL import Image,ImageOps; import sys; im=ImageOps.exif_transpose(Image.open(sys.argv[1])).convert("RGB"); im.thumbnail((2400,2400)); im.save(sys.argv[2],quality=85,optimize=True)', input, output]);
+    } else execFileSync('sips', ['-Z', '2400', '-s', 'format', 'jpeg', '-s', 'formatOptions', '85', input, '--out', output], { stdio: 'ignore' });
+    return { id: `hn_featured_${i + 1}`, kind: 'image', src: web, web, orig: '/files/' + rel.split('/').map(encodeURIComponent).join('/'), label: `Large-scale masterplan ${String(i + 1).padStart(2, '0')}`, source: 'Vendor portfolio', featured: true };
+  });
+  const originals = new Set(featured.map(m => decodeURIComponent(m.orig).split('#')[0]));
+  v.media = [...featured, ...v.media.filter(m => !m.id.startsWith('hn_featured_') && !originals.has(decodeURIComponent(m.orig || m.src || '').split('#')[0]))];
+  v.cover = featured[0].id; v.featuredRevision = '2026-11-26-selected-8';
+}
+// Targeted portfolio refresh, without rebuilding unrelated media or reading the workbook.
+if (process.argv.includes('--featured-only')) {
+  const file = path.join(PUB, 'data', 'seed.js');
+  const state = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^window\.SEED=/, '').trim().replace(/;$/, ''));
+  syncFeaturedImages(state); state.source.rev = Date.now();
+  fs.writeFileSync(file, 'window.SEED=' + JSON.stringify(state) + ';\n');
+  console.log('Updated the eight selected Hansinok previews; other media unchanged.'); process.exit(0);
+}
 // Published copy follows the comparison basis; the original workbook/document totals remain unchanged.
 const PROJECT_SCOPE = `Scope: ${BASIS.multimediaSec}-s multimedia · 2 master aerials (480 km²) · 6 node aerials (3 nodes × 2) · 3 eye-level views · ${BASIS.animationSec}-s animation | Comparison basis updated 2026-11-26`;
 const OLD_ICON_COMMERCIAL = 'Commercial: the highest quotation received (¥215,290 incl. tax, about S$38.4k on the Ghana quantities); 30% advance, 70% before delivery.';
@@ -266,6 +294,7 @@ const url = f => '/files/' + path.relative(ROOT, f).split(path.sep).map(encodeUR
   for (const v of st.vendors) { const k = Object.keys(VIDEO_QUALITY).find(n => P.sameVendor(v.name, n) || v.name.startsWith(n)); v.videoQuality = k ? VIDEO_QUALITY[k] : 'Medium'; }
   st.quotationDefaults = QUOTATION_DEFAULTS; st.defaultCompare = DEFAULT_COMPARE.map(n => (st.vendors.find(x => P.sameVendor(x.name, n)) || {}).id).filter(Boolean);
   syncPublishedText(st);
+  syncFeaturedImages(st);
   st.source = { workbook: path.basename(WORKBOOK), built: new Date().toISOString().slice(0, 10), rev: Date.now() };
   fs.writeFileSync(path.join(PUB, 'data', 'seed.js'), 'window.SEED=' + JSON.stringify(st) + ';\n');
   console.log(st.vendors.map(v => `${v.name}: ${v.currency} ${v.price} | img ${v.media.filter(m => m.kind === 'image').length} vid ${v.media.filter(m => m.kind === 'video' || m.kind === 'embed').length} link ${v.media.filter(m => m.kind === 'link').length}`).join('\n'));
