@@ -138,7 +138,7 @@ const GROUPS = [['g1', 'A · Multimedia production quality (storyline & multimed
 // Reviewer's scores per criterion (points, criteria 1–8 in workbook order), reviewer's final adjustment of 2026-11-26 for Hansinok, AIP Studioworks and ICON (category totals A/B/C as reviewed; split within a category is proportional); others from the comparison exported on 2026-11-20.
 // The export only carries criterion totals, so each total is spread over the sub-items in proportion to their max (0.5 steps).
 const REVIEW = { date: '2026-11-26', scores: {
-  Hansinok: [19, 9, 12, 13, 9, 10, 5, 10], 'AIP Studioworks': [16, 8, 13.5, 10, 3, 8.5, 5, 7],
+  Hansinok: [19, 9, 14.5, 12, 9, 9.5, 5, 9], 'AIP Studioworks': [17, 8, 11, 11.5, 3, 8.5, 5, 7],
   Willmore: [15.5, 7, 6, 7.5, 7, 7.5, 4.5, 8], 'SNT Visual': [8.5, 4.5, 5, 5.5, 3, 5, 4, 9],
   ICON: [19.5, 9, 13.5, 15, 9, 7.5, 4.5, 2] } };
 // Delivery wording shown in Compare (reviewer's summary; the detailed terms stay in each vendor's Quotation terms record).
@@ -149,6 +149,29 @@ function spread(total, subs) {
   const order = raw.map((r, i) => [r - out[i], i]).sort((a, b) => b[0] - a[0]).map(x => x[1]);
   for (let k = 0; left > 0 && k < 50; k++) { const i = order[k % order.length]; if (out[i] + 0.5 <= subs[i].max) { out[i] += 0.5; left--; } }
   return out;
+}
+// Only these criteria were changed by the reviewer; keep all other browser scores and drafts.
+const REVIEW_UPDATES = { Hansinok: [2, 3, 5, 6, 7], 'AIP Studioworks': [0, 2, 3], ICON: [5] };
+function syncScoreCorrection(state) {
+  const patch = {};
+  for (const [name, indices] of Object.entries(REVIEW_UPDATES)) {
+    const v = state.vendors.find(v => v.name === name); if (!v) throw new Error('Missing reviewed vendor: ' + name);
+    patch[v.id] = {};
+    for (const i of indices) {
+      const c = state.criteria[i], points = REVIEW.scores[name][i];
+      spread(points, c.subs).forEach((x, k) => { patch[v.id][c.subs[k].id] = x; });
+    }
+    Object.assign(state.scores[v.id], patch[v.id]);
+  }
+  state.scoreCorrection = { id: '2026-11-26-final-review-v2', scores: patch };
+  state.scoringNote = `criteria from workbook · scores reviewed ${REVIEW.date} (updated)`;
+}
+if (process.argv.includes('--scores-only')) {
+  const file = path.join(PUB, 'data', 'seed.js');
+  const state = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^window\.SEED=/, '').trim().replace(/;$/, ''));
+  syncScoreCorrection(state);
+  fs.writeFileSync(file, 'window.SEED=' + JSON.stringify(state) + ';\n');
+  console.log('Updated approved criteria only; other scores, quotations and media unchanged.'); process.exit(0);
 }
 // Vendors quoted after the workbook was last saved. Totals are normalised to the Ghana quantities (3 eye-level, 5 min multimedia) like the workbook rows.
 const EXTRA_VENDORS = [{
@@ -286,6 +309,7 @@ const url = f => '/files/' + path.relative(ROOT, f).split(path.sep).map(encodeUR
   for (const v of st.vendors) { if (v.price == null) continue; v.vsLowest = v.price / low - 1; if (v.updated && ps) { const r = v.price / low; (st.scores[v.id] = st.scores[v.id] || {})[ps.id] = ps.max * (r <= 1.1 ? 1 : r <= 1.3 ? 0.5 : r <= 1.5 ? 0.3 : 0); ps.rationale = (ps.rationale || '') + ` Updated ${st.vendors.find(x => x === v).quote.slice(0, 10)}: ${v.name} ${v.currency} ${v.price.toLocaleString('en-SG')} = ${Math.round(r * 100)}% of the lowest quote.`; } delete v.updated; }
   for (const [name, pts] of Object.entries(REVIEW.scores)) { const v = st.vendors.find(x => P.sameVendor(x.name, name)); if (!v) { console.warn('review: vendor not found', name); continue; } st.criteria.forEach((c, i) => spread(pts[i], c.subs).forEach((x, k) => { (st.scores[v.id] = st.scores[v.id] || {})[c.subs[k].id] = x; })); }
   st.scoringNote = `criteria from workbook · scores reviewed ${REVIEW.date}`;
+  syncScoreCorrection(st);
   for (const v of st.vendors) { const k = Object.keys(PROFILES).find(n => P.sameVendor(v.name, n)), pr = PROFILES[k] || {}; Object.assign(v, { company: pr.company || v.name, location: pr.location || '', contact: pr.contact || '', email: pr.email || '', wechat: pr.wechat || '', keynotes: (pr.keynotes || []).join('\n') }); }
   for (const [name, d] of Object.entries(DELIVERY)) { const v = st.vendors.find(x => P.sameVendor(x.name, name)); if (v) { v.timeline = d[0]; v.revisions = d[1]; } }
   for (const [name, [rank, note]] of Object.entries(RANKS)) { const v = st.vendors.find(x => P.sameVendor(x.name, name)); if (v) { v.rank = rank; v.recNote = note; } }
