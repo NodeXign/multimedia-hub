@@ -495,6 +495,12 @@ document.addEventListener('change', async e => {
   }
   if (window.SEED && !S.importedFrom) for (const sv of window.SEED.vendors) { const v = S.vendors.find(x => x.id === sv.id); if (v) for (const k of ['videoQuality', 'keynotes', 'company', 'location', 'contact', 'email', 'wechat']) if (v[k] === undefined) v[k] = sv[k]; } // fields added after this browser saved its state
   if (window.SEED && !S.importedFrom) for (const sv of window.SEED.vendors) { const v = vById(sv.id); if (v && sv.featuredRevision && v.featuredRevision !== sv.featuredRevision) { v.cover = sv.cover; v.featuredRevision = sv.featuredRevision; save(); } }
+  // Apply the reviewer's explicit criterion correction once; retain unrelated scores and drafts.
+  if (window.SEED?.scoreCorrection && !S.importedFrom && S.appliedScoreCorrection !== window.SEED.scoreCorrection.id) {
+    const c = window.SEED.scoreCorrection;
+    for (const [id, scores] of Object.entries(c.scores)) if (vById(id)) Object.assign(S.scores[id] = S.scores[id] || {}, scores);
+    S.appliedScoreCorrection = c.id; S.scoringNote = window.SEED.scoringNote; save();
+  }
   // Migrate only the exact superseded copy; keep custom notes, scores, prices and planner drafts.
   if (window.SEED?.textCorrections && !S.importedFrom) {
     const c = window.SEED.textCorrections;
