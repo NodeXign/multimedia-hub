@@ -493,6 +493,14 @@ document.addEventListener('change', async e => {
     S.source = clone(window.SEED.source); save();
   }
   if (window.SEED && !S.importedFrom) for (const sv of window.SEED.vendors) { const v = S.vendors.find(x => x.id === sv.id); if (v) for (const k of ['videoQuality', 'keynotes', 'company', 'location', 'contact', 'email', 'wechat']) if (v[k] === undefined) v[k] = sv[k]; } // fields added after this browser saved its state
+  // Migrate only the exact superseded copy; keep custom notes, scores, prices and planner drafts.
+  if (window.SEED?.textCorrections && !S.importedFrom) {
+    const c = window.SEED.textCorrections;
+    if (S.project?.scope === c.previousScope) S.project.scope = c.scope;
+    const icon = S.vendors.find(v => v.id === c.iconId);
+    if (icon?.keynotes) icon.keynotes = icon.keynotes.split('\n').map(line => line === c.previousIconCommercial ? c.iconCommercial : line).join('\n');
+    save();
+  }
   try { const need = new Set(allMedia().map(m => m.blobId).filter(Boolean)); for (const k of need) { const b = await blobGet(k); if (b) blobUrls[k] = URL.createObjectURL(b); } } catch (e) { console.warn('IndexedDB unavailable', e); }
   const q = new URLSearchParams(location.search), pre = (q.get('compare') || '').split(',').filter(id => vById(id)); // ?compare=id,id preselects vendors
   if (pre.length) ui.sel = new Set(pre.slice(0, 4)); else ui.sel = selLoad();
