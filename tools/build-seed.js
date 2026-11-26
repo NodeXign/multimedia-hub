@@ -73,19 +73,21 @@ const OVERRIDES = {
   Hansinok: {
     set: { quote: '2026-11-20 · Formal (updated quotation)', price: 30025, totalEx: 26800, anim15: 3225, docTotal: 30025, discount: 1 - 30025 / 51435,
       source: 'Hansinok Quotation Update 2026-11-20 (formal, SGD; modelling US$50/building excl.)',
-      notes: 'SGD, tax excl.; updated formal quote S$30,025 dated 20 Nov 2026 (supersedes S$34,300 of 19 Nov and the initial S$51,435 WeChat quote); 285 s multimedia @ S$20/s; 15 s animation @ S$215/s; modelling excluded – US$50/building, TBC; 50% advance; timeline Dec 2026–Jan 2027; animation: 1 demo + 3 rounds of static-frame revisions' },
+      notes: 'SGD, tax excl.; updated formal quote S$30,025 dated 20 Nov 2026 (supersedes S$34,300 of 19 Nov and the initial S$51,435 WeChat quote); 285 s multimedia @ S$20/s; 15 s animation @ S$215/s; modelling excluded – US$50/building, TBC; 50% advance; timeline Dec 2026–Jan 2027; animation: 1 demo + 3 rounds of static-frame revisions. FINAL QUOTATION (signed and sealed by Hansinok, file “Quotation Update for Africa Masterplan Project(2).pdf”): S$32,950 = 270 s multimedia @ S$20 + 30 s animation @ S$215 + 2 master aerial @ S$2,600 + 6 key-area aerial @ S$2,100 + 3 eye-level @ S$1,100; same unit rates as the 20 Nov quote; clause 6: major model / camera / time-of-day changes after first drafts are charged by proportion of affected images, quoted for SJ’s written approval first; clause 8: untextured 3ds Max model + PSD files on full payment, editable source files at extra cost; clause 9: revisions requested Feb–May 2027 are charged separately, quoted before work starts' },
     units: [[/Node/, 2100], [/Animation/, 215]],
   },
 };
 // Recommended display order (reviewer's call, editable in the app) and the three scoring categories.
 const RANKS = { Hansinok: [1, ''], Willmore: [2, 'Multimedia comparatively weaker'] };
 const GROUPS = [['g1', 'A · Multimedia production quality (storyline & multimedia)', [0, 1]], ['g2', 'B · Large-project experience & quality', [2, 4]], ['g3', 'C · Team capability & delivery', [3, 5, 6, 7]]];
-// Reviewer's scores per criterion (points, criteria 1–8 in workbook order), taken from the comparison exported on 2026-11-20.
+// Reviewer's scores per criterion (points, criteria 1–8 in workbook order), reviewer's final adjustment of 2026-11-26 for Hansinok, AIP Studioworks and ICON (category totals A/B/C as reviewed; split within a category is proportional); others from the comparison exported on 2026-11-20.
 // The export only carries criterion totals, so each total is spread over the sub-items in proportion to their max (0.5 steps).
-const REVIEW = { date: '2026-11-20', scores: {
-  Hansinok: [20, 10, 11, 12.5, 9.5, 8, 5, 8], 'AIP Studioworks': [15.5, 7.5, 8.5, 9, 2, 7.5, 4.5, 6],
+const REVIEW = { date: '2026-11-26', scores: {
+  Hansinok: [19, 9.5, 12, 14, 10, 9, 5, 8.5], 'AIP Studioworks': [16, 8, 13.5, 10, 3, 8.5, 5, 7],
   Willmore: [15.5, 7, 6, 7.5, 7, 7.5, 4.5, 8], 'SNT Visual': [8.5, 4.5, 5, 5.5, 3, 5, 4, 9],
-  ICON: [18, 8, 12.5, 12, 8, 6, 3.5, 2] } }; // ICON: provisional – reviewer's steer of ~70 overall, quality high, price low
+  ICON: [19.5, 9, 13.5, 15, 9, 7.5, 4.5, 2] } };
+// Delivery wording shown in Compare (reviewer's summary; the detailed terms stay in each vendor's Quotation terms record).
+const DELIVERY = { Hansinok: ['Committed', 'Included'], 'AIP Studioworks': ['Committed', 'Included'], ICON: ['Committed', 'Included'] };
 function spread(total, subs) {
   const M = subs.reduce((a, x) => a + x.max, 0), raw = subs.map(x => total * x.max / M), out = raw.map(r => Math.floor(r * 2 + 1e-9) / 2);
   let left = Math.round((total - out.reduce((a, b) => a + b, 0)) * 2);
@@ -106,7 +108,7 @@ const EXTRA_VENDORS = [{
 const PROFILES = {
   Hansinok: { company: 'Beijing Hansinok Co., Ltd', location: 'Beijing, China', contact: 'Charlie Yao', email: 'charlie@hansinok.com', wechat: '', keynotes: [
     'Company profile: strong market reputation and regarded as one of China’s top-tier architectural visualisation studios; fee level is at the premium end.',
-    'Commercial: overall quotation reduced from the initial S$51,435 to S$30,025 (about 42% off). Notably, multimedia is now priced at S$20 per second – a very substantial concession.',
+    'Commercial: revised over several rounds of negotiation; within a comparable quality range, its price to us is the lowest.',
     'Large-scale experience: track record on projects of 100 km² and above, including Middle East giga-projects such as NEOM / The Line, plus multimedia production; delivery quality and visual standard are consistently high. Also has project experience in Africa.',
     'Team: the project lead takes overall accountability for the rendering deliverables; team members have architectural backgrounds and extensive large-project experience.',
     'Programme: the proposed schedule for this project is realistic and can be progressed as planned.' ] },
@@ -133,6 +135,8 @@ const PROFILES = {
 };
 // Vendors whose workbook thumbnails are too small: use the folder originals instead. per = max images per sub-folder.
 // exclude = never publish (e.g. files the vendor marked as under NDA); prefer = shown first; nameLabels = label from the file name.
+// Documents kept in the project folder as internal records and not copied to the public site until the reviewer says so.
+const HOLD = /Quotation Update for Africa Masterplan Project\(2\)|工作量计费标准/;
 const IMG_LIMITS = { Hansinok: { max: 24, per: 9, dropExcel: true }, ICON: { max: 20, per: 20, exclude: /保密/, prefer: /规划|master\s?plan|island|housing|city|TOD/i, nameLabels: true, dropStills: true } };
 const niceName = f => path.basename(f, path.extname(f)).replace(/IARCH\d+\S*/i, '').replace(/\s*\(\d+\)/g, '').replace(/第二轮/g, '').replace(/^[A-Za-z]-(?=[A-Za-z])/, '').replace(/[-+\s]+$/, '').replace(/\s{2,}/g, ' ').trim();
 // Portfolio PDFs whose pages are rendering images (one image per page) -> shown as gallery images.
@@ -196,7 +200,7 @@ const url = f => '/files/' + path.relative(ROOT, f).split(path.sep).map(encodeUR
       const title = PDF_IMAGES[path.basename(f)];
       for (const pg of pdfImages(f, PUB, 'pdf' + (++n))) v.media.push({ id: 'f' + (++n), kind: 'image', src: pg.rel, orig: url(f) + '#page=' + pg.page, label: `${title} ${pad(pg.page)}`, source: 'Local PDF', web: pg.rel });
     }
-    for (const f of files.filter((f, i, a) => /\.(pdf|docx?)$/i.test(f) && a.findIndex(x => path.basename(x) === path.basename(f)) === i)) v.media.push({ id: 'f' + (++n), kind: 'link', src: url(f), orig: url(f), label: path.basename(f), source: 'Local folder', ...(fs.statSync(f).size < 2e7 ? { web: host(f) } : {}) });
+    for (const f of files.filter((f, i, a) => /\.(pdf|docx?)$/i.test(f) && !HOLD.test(path.basename(f)) && a.findIndex(x => path.basename(x) === path.basename(f)) === i)) v.media.push({ id: 'f' + (++n), kind: 'link', src: url(f), orig: url(f), label: path.basename(f), source: 'Local folder', ...(fs.statSync(f).size < 2e7 ? { web: host(f) } : {}) });
     const lim = IMG_LIMITS[vname] || { max: MAX_IMAGES, per: Infinity }, cnt = {}, pri = f => lim.prefer ? (lim.prefer.test(path.basename(f)) ? 0 : 1) : /非洲/.test(f) ? 0 : /大尺度/.test(f) ? 1 : 2;
     const imgs = files.filter(f => P.IMG.test(f) && !(lim.exclude && lim.exclude.test(f))).sort((a, b) => pri(a) - pri(b)).filter(f => { const g = path.dirname(f); cnt[g] = (cnt[g] || 0) + 1; return cnt[g] <= lim.per; }).slice(0, lim.max);
     if (lim.dropExcel && imgs.length) v.media = v.media.filter(m => !(m.source === 'Excel' && m.kind === 'image'));
@@ -221,6 +225,7 @@ const url = f => '/files/' + path.relative(ROOT, f).split(path.sep).map(encodeUR
   for (const [name, pts] of Object.entries(REVIEW.scores)) { const v = st.vendors.find(x => P.sameVendor(x.name, name)); if (!v) { console.warn('review: vendor not found', name); continue; } st.criteria.forEach((c, i) => spread(pts[i], c.subs).forEach((x, k) => { (st.scores[v.id] = st.scores[v.id] || {})[c.subs[k].id] = x; })); }
   st.scoringNote = `criteria from workbook · scores reviewed ${REVIEW.date}`;
   for (const v of st.vendors) { const k = Object.keys(PROFILES).find(n => P.sameVendor(v.name, n)), pr = PROFILES[k] || {}; Object.assign(v, { company: pr.company || v.name, location: pr.location || '', contact: pr.contact || '', email: pr.email || '', wechat: pr.wechat || '', keynotes: (pr.keynotes || []).join('\n') }); }
+  for (const [name, d] of Object.entries(DELIVERY)) { const v = st.vendors.find(x => P.sameVendor(x.name, name)); if (v) { v.timeline = d[0]; v.revisions = d[1]; } }
   for (const [name, [rank, note]] of Object.entries(RANKS)) { const v = st.vendors.find(x => P.sameVendor(x.name, name)); if (v) { v.rank = rank; v.recNote = note; } }
   st.groups = GROUPS.map(g => ({ id: g[0], name: g[1] })); st.criteria.forEach((c, i) => { c.group = (GROUPS.find(g => g[2].includes(i)) || GROUPS[2])[0]; });
   st.vendors.forEach(v => { const c = v.media.find(m => m.kind === 'image' && !m.doc); v.cover = c ? c.id : null; });
