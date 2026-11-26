@@ -11,6 +11,28 @@ const WORKBOOK = process.argv[2] || path.join(ROOT, 'Ghana Rendering Quotation_U
 // Comparison basis for every vendor (reviewer, 2026-11-26): Hansinok's final quotation scope – 270 s multimedia + 30 s animation, stills unchanged.
 // Each vendor's price is its own quoted unit rates × these quantities.
 const BASIS = { multimediaSec: 270, animationSec: 30 };
+// Published copy follows the comparison basis; the original workbook/document totals remain unchanged.
+const PROJECT_SCOPE = `Scope: ${BASIS.multimediaSec}-s multimedia · 2 master aerials (480 km²) · 6 node aerials (3 nodes × 2) · 3 eye-level views · ${BASIS.animationSec}-s animation | Comparison basis updated 2026-11-26`;
+const OLD_ICON_COMMERCIAL = 'Commercial: the highest quotation received (¥215,290 incl. tax, about S$38.4k on the Ghana quantities); 30% advance, 70% before delivery.';
+const ICON_COMMERCIAL = price => `Commercial: original quotation ¥215,290 incl. tax; comparable budget S$${price.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} for 2 master aerials, 6 node aerials, 3 eye-level views, ${BASIS.multimediaSec} s multimedia and ${BASIS.animationSec} s animation; 30% advance, 70% before delivery.`;
+function syncPublishedText(state) {
+  const previousScope = state.textCorrections?.previousScope || state.project.scope;
+  state.project.scope = PROJECT_SCOPE;
+  const icon = state.vendors.find(v => v.name === 'ICON');
+  if (!icon || !Number.isFinite(icon.price)) throw new Error('ICON comparable budget is missing');
+  const commercial = ICON_COMMERCIAL(icon.price);
+  icon.keynotes = icon.keynotes.split('\n').map(line => line.startsWith('Commercial:') ? commercial : line).join('\n');
+  state.textCorrections = { previousScope, scope: PROJECT_SCOPE, iconId: icon.id, previousIconCommercial: OLD_ICON_COMMERCIAL, iconCommercial: commercial };
+}
+// Text-only refresh preserves generated media and all quotation/score data.
+if (process.argv.includes('--text-only')) {
+  const file = path.join(PUB, 'data', 'seed.js');
+  const state = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^window\.SEED=/, '').trim().replace(/;$/, ''));
+  syncPublishedText(state);
+  fs.writeFileSync(file, 'window.SEED=' + JSON.stringify(state) + ';\n');
+  console.log('Updated published scope and ICON commercial text; workbook and media unchanged.');
+  process.exit(0);
+}
 // Reviewer's rating of each vendor's reference videos, shown in Video Preview (vendors not listed: Medium).
 const VIDEO_QUALITY = { Hansinok: 'High', ICON: 'High', 'Silkroad Visual': 'Low' };
 const DEFAULT_COMPARE = ['Hansinok', 'AIP Studioworks', 'ICON'];
@@ -131,7 +153,7 @@ const PROFILES = {
   ICON: { company: 'Shanghai Icon Digital Technology Co., Ltd 上海艾旷数字科技有限公司', location: 'Shanghai, China', contact: 'Lucia He', email: 'hemeiling@iconcg.net', wechat: 'www.iconcg.net', keynotes: [
     'Quality: high visual and multimedia quality in the submitted samples.',
     'Experience: video samples for international practices – BDP (Ipoh Masterplan), Gensler (Dubai Riverside), Perkins&Will (Murabba), Buro Happold (Jeddah marina masterplans).',
-    'Commercial: the highest quotation received (¥215,290 incl. tax, about S$38.4k on the Ghana quantities); 30% advance, 70% before delivery.',
+    'Commercial: comparable budget uses the current project comparison basis; 30% advance, 70% before delivery.',
     'Watch point: modelling scope and delivery programme are not stated in the quotation.' ] },
   'SNT Visual': { company: 'SNT Visual 写意数字图像', location: '', contact: '', email: '', wechat: '', keynotes: [
     'Commercial: price-competitive.',
@@ -243,6 +265,7 @@ const url = f => '/files/' + path.relative(ROOT, f).split(path.sep).map(encodeUR
   st.vendors.forEach(v => { const c = v.media.find(m => m.kind === 'image' && !m.doc); v.cover = c ? c.id : null; });
   for (const v of st.vendors) { const k = Object.keys(VIDEO_QUALITY).find(n => P.sameVendor(v.name, n) || v.name.startsWith(n)); v.videoQuality = k ? VIDEO_QUALITY[k] : 'Medium'; }
   st.quotationDefaults = QUOTATION_DEFAULTS; st.defaultCompare = DEFAULT_COMPARE.map(n => (st.vendors.find(x => P.sameVendor(x.name, n)) || {}).id).filter(Boolean);
+  syncPublishedText(st);
   st.source = { workbook: path.basename(WORKBOOK), built: new Date().toISOString().slice(0, 10), rev: Date.now() };
   fs.writeFileSync(path.join(PUB, 'data', 'seed.js'), 'window.SEED=' + JSON.stringify(st) + ';\n');
   console.log(st.vendors.map(v => `${v.name}: ${v.currency} ${v.price} | img ${v.media.filter(m => m.kind === 'image').length} vid ${v.media.filter(m => m.kind === 'video' || m.kind === 'embed').length} link ${v.media.filter(m => m.kind === 'link').length}`).join('\n'));
