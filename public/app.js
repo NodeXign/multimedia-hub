@@ -150,10 +150,14 @@ document.addEventListener('input', e => { const t = e.target; if (!t.classList |
 /* ---------- render ---------- */
 function renderOverview() {
   const pi = priceInfo(), evald = S.vendors.filter(v => overall(v).complete).length, p = S.project || {};
+  const localComparisonEdits = window.SEED && !S.importedFrom && window.MMPublishedState.signature(S) !== window.MMPublishedState.signature(window.SEED);
   $('#projName').textContent = S.demo ? 'Demo data' : 'Ghana Pilot Project';
   $('#overview').innerHTML = `
     <h1 style="font-size:32px">${S.demo ? 'Demo data' : 'Ghana Pilot — Vendor Comparison'}</h1>
     <p class="lead">${esc(p.title)}${p.scope ? '<br>' + esc(p.scope) : ''}</p>
+    ${S.baselineSyncNotice && !localComparisonEdits ? `<div class="note info">Published quotations and scores have been refreshed. ${S.baselineBackupAvailable ? 'Your previous dashboard state is backed up in this browser. ' : ''}Quotation Planner drafts and uploaded media are retained.</div>` : ''}
+    ${localComparisonEdits ? '<div class="note">Local comparison edits are being shown. Prices or scores may differ from the published baseline. Use Quotation Planner for separate budget scenarios.</div>' : ''}
+    ${S.importedFrom ? '<div class="note">You are viewing a locally imported workbook, not the published project baseline.</div>' : ''}
     ${S.demo ? '<div class="note"><b>Demo data.</b> These vendors and prices are placeholders, not Ghana Pilot information. Use <b>Import Data</b> to load the real workbook.</div>' : ''}
     <div class="kpis">
       <div class="kpi"><span>Total Vendors</span><b class="num">${S.vendors.length}</b><em>${S.vendors.filter(v => images(v).length).length} with portfolio images</em></div>
@@ -486,6 +490,7 @@ document.addEventListener('change', async e => {
 /* ---------- boot ---------- */
 (async () => {
   try { S = JSON.parse(localStorage.getItem(LS) || 'null'); } catch (e) { S = null; }
+  const savedBeforeRefresh = S ? clone(S) : null;
   if (!S || !S.vendors) S = clone(window.SEED || DEMO());
   else if (window.SEED && !S.importedFrom && S.source && S.source.rev !== window.SEED.source.rev) {
     // seed was rebuilt: refresh project media/names, keep the user's edits, scores and own uploads
@@ -508,6 +513,17 @@ document.addEventListener('change', async e => {
     const icon = S.vendors.find(v => v.id === c.iconId);
     if (icon?.keynotes) icon.keynotes = icon.keynotes.split('\n').map(line => line === c.previousIconCommercial ? c.iconCommercial : line).join('\n');
     save();
+  }
+  // A cached source.rev can already be current while prices/scores are still old.
+  // Compare the actual published data, not the media revision or partial correction flags.
+  if (window.SEED && !S.importedFrom) {
+    const synced = window.MMPublishedState.sync(S, window.SEED);
+    if (synced.changed) {
+      let backedUp = false;
+      try { localStorage.setItem('mmhub.state.before-published-sync.v1', JSON.stringify(savedBeforeRefresh || S)); backedUp = true; }
+      catch (e) { console.warn('Could not back up previous dashboard state', e); }
+      S = synced.state; S.baselineSyncNotice = true; S.baselineBackupAvailable = backedUp; save();
+    }
   }
   try { const need = new Set(allMedia().map(m => m.blobId).filter(Boolean)); for (const k of need) { const b = await blobGet(k); if (b) blobUrls[k] = URL.createObjectURL(b); } } catch (e) { console.warn('IndexedDB unavailable', e); }
   const q = new URLSearchParams(location.search), pre = (q.get('compare') || '').split(',').filter(id => vById(id)); // ?compare=id,id preselects vendors
